@@ -18,5 +18,5 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 async-trait.workspace = true
 serde_yaml = "0.9"
-directories = "5.0"
+directories = "6.0"
 tokio-util = { version = "0.7", features = ["codec"] }
