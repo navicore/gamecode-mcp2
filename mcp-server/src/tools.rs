@@ -25,6 +25,7 @@ pub struct ToolDefinition {
     #[serde(default)]
     pub static_flags: Vec<String>,
     pub internal_handler: Option<String>,
+    #[allow(dead_code)]
     pub example_output: Option<Value>,
 }
 
@@ -36,6 +37,7 @@ pub struct ArgDefinition {
     #[serde(rename = "type")]
     pub arg_type: String,
     pub cli_flag: Option<String>,
+    #[allow(dead_code)]
     pub default: Option<String>,
 }
 
@@ -52,19 +54,18 @@ impl ToolManager {
 
     pub async fn load_from_file(&mut self, path: &Path) -> Result<()> {
         info!("Loading tools from: {}", path.display());
-        
+
         let content = tokio::fs::read_to_string(path)
             .await
             .context("Failed to read tools file")?;
-            
-        let config: ToolsConfig = serde_yaml::from_str(&content)
-            .context("Failed to parse YAML")?;
-            
+
+        let config: ToolsConfig = serde_yaml::from_str(&content).context("Failed to parse YAML")?;
+
         for tool in config.tools {
             info!("Loaded tool: {}", tool.name);
             self.tools.insert(tool.name.clone(), tool);
         }
-        
+
         Ok(())
     }
 
@@ -74,11 +75,11 @@ impl ToolManager {
             PathBuf::from("./tools.yaml"),
             PathBuf::from("~/.config/gamecode-mcp/tools.yaml"),
         ];
-        
+
         if let Ok(tools_file) = std::env::var("GAMECODE_TOOLS_FILE") {
             return self.load_from_file(Path::new(&tools_file)).await;
         }
-        
+
         for path in paths {
             let expanded = if path.starts_with("~") {
                 if let Some(home) = directories::UserDirs::new() {
@@ -89,12 +90,12 @@ impl ToolManager {
             } else {
                 path
             };
-            
+
             if expanded.exists() {
                 return self.load_from_file(&expanded).await;
             }
         }
-        
+
         Err(anyhow::anyhow!("No tools.yaml file found"))
     }
 
@@ -104,7 +105,7 @@ impl ToolManager {
             .map(|def| {
                 let mut properties = serde_json::Map::new();
                 let mut required = Vec::new();
-                
+
                 // Build JSON schema from arg definitions
                 for arg in &def.args {
                     let arg_schema = match arg.arg_type.as_str() {
@@ -129,20 +130,20 @@ impl ToolManager {
                             "description": arg.description
                         }),
                     };
-                    
+
                     properties.insert(arg.name.clone(), arg_schema);
-                    
+
                     if arg.required {
                         required.push(json!(arg.name));
                     }
                 }
-                
+
                 let schema = json!({
                     "type": "object",
                     "properties": properties,
                     "required": required
                 });
-                
+
                 Tool {
                     name: def.name.clone(),
                     description: def.description.clone(),
@@ -153,26 +154,28 @@ impl ToolManager {
     }
 
     pub async fn execute_tool(&self, name: &str, args: Value) -> Result<Value> {
-        let tool = self.tools.get(name)
+        let tool = self
+            .tools
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found", name))?;
-        
+
         // Handle internal handlers
         if let Some(handler) = &tool.internal_handler {
             return self.execute_internal_handler(handler, &args).await;
         }
-        
+
         // Execute external command
         if tool.command.is_empty() || tool.command == "internal" {
             return Err(anyhow::anyhow!("Tool '{}' has no command", name));
         }
-        
+
         let mut cmd = Command::new(&tool.command);
-        
+
         // Add static flags
         for flag in &tool.static_flags {
             cmd.arg(flag);
         }
-        
+
         // Add arguments
         if let Some(obj) = args.as_object() {
             for arg_def in &tool.args {
@@ -187,19 +190,19 @@ impl ToolManager {
                 }
             }
         }
-        
+
         debug!("Executing command: {:?}", cmd);
-        
+
         let output = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
             .await
             .context("Failed to execute command")?;
-            
+
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            
+
             // Try to parse as JSON first
             if let Ok(json_value) = serde_json::from_str::<Value>(&stdout) {
                 Ok(json_value)
@@ -218,9 +221,13 @@ impl ToolManager {
     async fn execute_internal_handler(&self, handler: &str, args: &Value) -> Result<Value> {
         match handler {
             "add" => {
-                let a = args.get("a").and_then(|v| v.as_f64())
+                let a = args
+                    .get("a")
+                    .and_then(|v| v.as_f64())
                     .ok_or_else(|| anyhow::anyhow!("Missing parameter 'a'"))?;
-                let b = args.get("b").and_then(|v| v.as_f64())
+                let b = args
+                    .get("b")
+                    .and_then(|v| v.as_f64())
                     .ok_or_else(|| anyhow::anyhow!("Missing parameter 'b'"))?;
                 Ok(json!({
                     "result": a + b,
@@ -228,9 +235,13 @@ impl ToolManager {
                 }))
             }
             "multiply" => {
-                let a = args.get("a").and_then(|v| v.as_f64())
+                let a = args
+                    .get("a")
+                    .and_then(|v| v.as_f64())
                     .ok_or_else(|| anyhow::anyhow!("Missing parameter 'a'"))?;
-                let b = args.get("b").and_then(|v| v.as_f64())
+                let b = args
+                    .get("b")
+                    .and_then(|v| v.as_f64())
                     .ok_or_else(|| anyhow::anyhow!("Missing parameter 'b'"))?;
                 Ok(json!({
                     "result": a * b,
@@ -238,13 +249,11 @@ impl ToolManager {
                 }))
             }
             "list_files" => {
-                let path = args.get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
-                    
+                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+
                 let mut files = Vec::new();
                 let mut entries = tokio::fs::read_dir(path).await?;
-                
+
                 while let Some(entry) = entries.next_entry().await? {
                     let metadata = entry.metadata().await?;
                     files.push(json!({
@@ -253,13 +262,13 @@ impl ToolManager {
                         "size": metadata.len()
                     }));
                 }
-                
+
                 Ok(json!({
                     "path": path,
                     "files": files
                 }))
             }
-            _ => Err(anyhow::anyhow!("Unknown internal handler: {}", handler))
+            _ => Err(anyhow::anyhow!("Unknown internal handler: {}", handler)),
         }
     }
 }

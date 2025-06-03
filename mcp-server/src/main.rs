@@ -3,13 +3,13 @@ use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, error, info, warn};
 
+mod handlers;
 mod protocol;
 mod tools;
-mod handlers;
 
+use handlers::RequestHandler;
 use protocol::*;
 use tools::ToolManager;
-use handlers::RequestHandler;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tracing::{debug, info};
+use tokio::process::{Child, Command};
 
 pub mod protocol;
 pub mod transport;
@@ -16,11 +14,15 @@ pub struct McpClient {
 
 impl McpClient {
     pub fn new(mut process: Child) -> Result<Self> {
-        let stdin = process.stdin.take()
+        let stdin = process
+            .stdin
+            .take()
             .context("Failed to get stdin from process")?;
-        let stdout = process.stdout.take()
+        let stdout = process
+            .stdout
+            .take()
             .context("Failed to get stdout from process")?;
-        
+
         Ok(Self {
             transport: transport::StdioTransport::new(stdin, stdout, process),
             request_id: 0,
@@ -32,18 +34,21 @@ impl McpClient {
         for arg in args {
             cmd.arg(arg);
         }
-        
+
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
-        
-        let process = cmd.spawn()
-            .context("Failed to spawn MCP server process")?;
-            
+
+        let process = cmd.spawn().context("Failed to spawn MCP server process")?;
+
         Self::new(process)
     }
 
-    pub async fn initialize(&mut self, client_name: &str, client_version: &str) -> Result<InitializeResult> {
+    pub async fn initialize(
+        &mut self,
+        client_name: &str,
+        client_version: &str,
+    ) -> Result<InitializeResult> {
         let params = InitializeParams {
             protocol_version: "2024-11-05".to_string(),
             capabilities: ClientCapabilities {
@@ -55,19 +60,20 @@ impl McpClient {
             },
         };
 
-        let response = self.request("initialize", Some(serde_json::to_value(params)?)).await?;
-        
+        let response = self
+            .request("initialize", Some(serde_json::to_value(params)?))
+            .await?;
+
         // Send initialized notification
         self.notify("notifications/initialized", None).await?;
-        
-        serde_json::from_value(response)
-            .context("Failed to parse initialize response")
+
+        serde_json::from_value(response).context("Failed to parse initialize response")
     }
 
     pub async fn list_tools(&mut self) -> Result<Vec<Tool>> {
         let response = self.request("tools/list", None).await?;
-        let result: ListToolsResult = serde_json::from_value(response)
-            .context("Failed to parse tools list")?;
+        let result: ListToolsResult =
+            serde_json::from_value(response).context("Failed to parse tools list")?;
         Ok(result.tools)
     }
 
@@ -77,20 +83,21 @@ impl McpClient {
             arguments,
         };
 
-        let response = self.request("tools/call", Some(serde_json::to_value(params)?)).await?;
-        let result: CallToolResult = serde_json::from_value(response)
-            .context("Failed to parse tool call result")?;
-        
+        let response = self
+            .request("tools/call", Some(serde_json::to_value(params)?))
+            .await?;
+        let result: CallToolResult =
+            serde_json::from_value(response).context("Failed to parse tool call result")?;
+
         if result.is_error.unwrap_or(false) {
             if let Some(ContentBlock::Text { text }) = result.content.first() {
                 anyhow::bail!("Tool error: {}", text);
             }
         }
-        
+
         // Extract the text content
         if let Some(ContentBlock::Text { text }) = result.content.first() {
-            serde_json::from_str(text)
-                .context("Failed to parse tool result")
+            serde_json::from_str(text).context("Failed to parse tool result")
         } else {
             Ok(Value::Null)
         }

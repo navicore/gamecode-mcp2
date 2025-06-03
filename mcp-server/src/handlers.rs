@@ -16,7 +16,7 @@ impl RequestHandler {
 
     pub async fn handle_request(&self, request: JsonRpcRequest) -> JsonRpcResponse {
         debug!("Handling request: {} (id: {})", request.method, request.id);
-        
+
         let result = match request.method.as_str() {
             "initialize" => self.handle_initialize(request.params).await,
             "tools/list" => self.handle_tools_list().await,
@@ -46,7 +46,7 @@ impl RequestHandler {
 
     pub async fn handle_notification(&self, notification: JsonRpcNotification) {
         debug!("Handling notification: {}", notification.method);
-        
+
         match notification.method.as_str() {
             "notifications/initialized" => {
                 info!("Client initialized");
@@ -85,7 +85,8 @@ impl RequestHandler {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             instructions: Some(
-                "GameCode MCP Server v2 - Direct tool integration. Configure tools in tools.yaml".to_string()
+                "GameCode MCP Server v2 - Direct tool integration. Configure tools in tools.yaml"
+                    .to_string(),
             ),
         };
 
@@ -94,9 +95,9 @@ impl RequestHandler {
 
     async fn handle_tools_list(&self) -> Result<Value, JsonRpcError> {
         let tools = self.tool_manager.get_mcp_tools();
-        
+
         let result = ListToolsResult { tools };
-        
+
         Ok(serde_json::to_value(result).unwrap())
     }
 
@@ -115,7 +116,11 @@ impl RequestHandler {
             });
         };
 
-        match self.tool_manager.execute_tool(&params.name, params.arguments).await {
+        match self
+            .tool_manager
+            .execute_tool(&params.name, params.arguments)
+            .await
+        {
             Ok(result) => {
                 let response = CallToolResult {
                     content: vec![ContentBlock::Text {
@@ -123,19 +128,19 @@ impl RequestHandler {
                     }],
                     is_error: None,
                 };
-                
+
                 Ok(serde_json::to_value(response).unwrap())
             }
             Err(e) => {
                 error!("Tool execution failed: {}", e);
-                
+
                 let response = CallToolResult {
                     content: vec![ContentBlock::Text {
                         text: format!("Error: {}", e),
                     }],
                     is_error: Some(true),
                 };
-                
+
                 Ok(serde_json::to_value(response).unwrap())
             }
         }
