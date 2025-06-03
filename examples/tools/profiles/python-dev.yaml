@@ -1,0 +1,21 @@
+# Python development profile
+include:
+  - ../core.yaml
+  - ../git.yaml
+  - ../languages/python.yaml
+
+# Additional Python-specific tools
+tools:
+  - name: venv_create
+    description: Create a Python virtual environment
+    command: python
+    args:
+      - name: name
+        description: Name of the virtual environment
+        required: false
+        type: string
+        default: "venv"
+        cli_flag: null
+    static_flags:
+      - "-m"
+      - "venv"

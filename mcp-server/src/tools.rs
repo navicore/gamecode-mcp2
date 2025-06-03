@@ -11,6 +11,9 @@ use crate::protocol::Tool;
 
 #[derive(Debug, Deserialize)]
 pub struct ToolsConfig {
+    #[serde(default)]
+    pub include: Vec<String>,
+    #[serde(default)]
     pub tools: Vec<ToolDefinition>,
 }
 
@@ -61,12 +64,56 @@ impl ToolManager {
 
         let config: ToolsConfig = serde_yaml::from_str(&content).context("Failed to parse YAML")?;
 
+        // Process includes first
+        for include in &config.include {
+            let include_path = self.resolve_include_path(path, include)?;
+            info!("Including tools from: {}", include_path.display());
+
+            // Recursively load included files
+            Box::pin(self.load_from_file(&include_path)).await?;
+        }
+
+        // Then load tools from this file
         for tool in config.tools {
             info!("Loaded tool: {}", tool.name);
             self.tools.insert(tool.name.clone(), tool);
         }
 
         Ok(())
+    }
+
+    fn resolve_include_path(&self, base_path: &Path, include: &str) -> Result<PathBuf> {
+        let base_dir = base_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory"))?;
+
+        // Support both relative and absolute paths
+        let include_path = if include.starts_with('/') {
+            PathBuf::from(include)
+        } else {
+            match include.starts_with("~/") {
+                true => {
+                    if let Some(home) = directories::UserDirs::new() {
+                        home.home_dir().join(&include[2..])
+                    } else {
+                        return Err(anyhow::anyhow!("Cannot resolve home directory"));
+                    }
+                }
+                false => {
+                    // Relative path
+                    base_dir.join(include)
+                }
+            }
+        };
+
+        if !include_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Include file not found: {}",
+                include_path.display()
+            ));
+        }
+
+        Ok(include_path)
     }
 
     pub async fn load_from_default_locations(&mut self) -> Result<()> {
@@ -97,6 +144,72 @@ impl ToolManager {
         }
 
         Err(anyhow::anyhow!("No tools.yaml file found"))
+    }
+
+    pub async fn load_mode(&mut self, mode: &str) -> Result<()> {
+        // Clear existing tools when switching modes
+        self.tools.clear();
+
+        // Load the mode-specific configuration
+        let mode_file = format!("tools/profiles/{}.yaml", mode);
+        let mode_path = PathBuf::from(&mode_file);
+
+        if mode_path.exists() {
+            self.load_from_file(&mode_path).await
+        } else {
+            // Try in config directory
+            if let Some(home) = directories::UserDirs::new() {
+                let config_path = home
+                    .home_dir()
+                    .join(".config/gamecode-mcp")
+                    .join(&mode_file);
+                if config_path.exists() {
+                    return self.load_from_file(&config_path).await;
+                }
+            }
+
+            Err(anyhow::anyhow!("Mode configuration '{}' not found", mode))
+        }
+    }
+
+    pub async fn detect_and_load_mode(&mut self) -> Result<()> {
+        // Auto-detect project type and load appropriate tools
+        let detections = vec![
+            ("Cargo.toml", "rust"),
+            ("package.json", "javascript"),
+            ("requirements.txt", "python"),
+            ("go.mod", "go"),
+            ("pom.xml", "java"),
+            ("build.gradle", "java"),
+            ("Gemfile", "ruby"),
+        ];
+
+        for (file, mode) in detections {
+            if PathBuf::from(file).exists() {
+                info!("Detected {} project, loading {} tools", mode, mode);
+
+                // Try to load language-specific tools
+                let lang_file = format!("tools/languages/{}.yaml", mode);
+                if PathBuf::from(&lang_file).exists() {
+                    self.load_from_file(Path::new(&lang_file)).await?;
+                }
+
+                // Always load core tools as well
+                if PathBuf::from("tools/core.yaml").exists() {
+                    self.load_from_file(Path::new("tools/core.yaml")).await?;
+                }
+
+                // Load git tools if .git exists
+                if PathBuf::from(".git").exists() && PathBuf::from("tools/git.yaml").exists() {
+                    self.load_from_file(Path::new("tools/git.yaml")).await?;
+                }
+
+                return Ok(());
+            }
+        }
+
+        // Default: just load from default locations
+        self.load_from_default_locations().await
     }
 
     pub fn get_mcp_tools(&self) -> Vec<Tool> {
@@ -266,6 +379,24 @@ impl ToolManager {
                 Ok(json!({
                     "path": path,
                     "files": files
+                }))
+            }
+            "write_file" => {
+                let path = args
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'path'"))?;
+                let content = args
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'content'"))?;
+
+                tokio::fs::write(path, content).await?;
+
+                Ok(json!({
+                    "status": "success",
+                    "path": path,
+                    "bytes_written": content.len()
                 }))
             }
             _ => Err(anyhow::anyhow!("Unknown internal handler: {}", handler)),

@@ -1,0 +1,68 @@
+# Python-specific development tools
+tools:
+  - name: python_run
+    description: Run a Python script
+    command: python
+    args:
+      - name: script
+        description: Path to the Python script
+        required: true
+        type: string
+        cli_flag: null
+
+  - name: pip_install
+    description: Install Python packages
+    command: pip
+    args:
+      - name: package
+        description: Package name to install
+        required: true
+        type: string
+        cli_flag: null
+      - name: requirements
+        description: Install from requirements file
+        required: false
+        type: string
+        cli_flag: "-r"
+    static_flags:
+      - "install"
+
+  - name: pytest
+    description: Run Python tests with pytest
+    command: pytest
+    args:
+      - name: path
+        description: Specific test file or directory
+        required: false
+        type: string
+        cli_flag: null
+      - name: verbose
+        description: Verbose output
+        required: false
+        type: boolean
+        cli_flag: "-v"
+
+  - name: black
+    description: Format Python code with Black
+    command: black
+    args:
+      - name: path
+        description: File or directory to format
+        required: true
+        type: string
+        cli_flag: null
+      - name: check
+        description: Check formatting without changes
+        required: false
+        type: boolean
+        cli_flag: "--check"
+
+  - name: mypy
+    description: Type check Python code with mypy
+    command: mypy
+    args:
+      - name: path
+        description: File or directory to type check
+        required: true
+        type: string
+        cli_flag: null

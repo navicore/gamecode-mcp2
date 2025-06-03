@@ -1,0 +1,59 @@
+# Git version control tools
+tools:
+  - name: git_status
+    description: Show the working tree status
+    command: git
+    args: []
+    static_flags:
+      - "status"
+      - "--short"
+
+  - name: git_diff
+    description: Show changes between commits, commit and working tree, etc
+    command: git
+    args:
+      - name: path
+        description: Specific file or directory to diff
+        required: false
+        type: string
+        cli_flag: null
+    static_flags:
+      - "diff"
+
+  - name: git_log
+    description: Show commit logs
+    command: git
+    args:
+      - name: count
+        description: Number of commits to show
+        required: false
+        type: number
+        default: "10"
+        cli_flag: "-n"
+    static_flags:
+      - "log"
+      - "--oneline"
+
+  - name: git_add
+    description: Add file contents to the index
+    command: git
+    args:
+      - name: path
+        description: Files to add
+        required: true
+        type: string
+        cli_flag: null
+    static_flags:
+      - "add"
+
+  - name: git_commit
+    description: Record changes to the repository
+    command: git
+    args:
+      - name: message
+        description: Commit message
+        required: true
+        type: string
+        cli_flag: "-m"
+    static_flags:
+      - "commit"

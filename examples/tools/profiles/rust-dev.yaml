@@ -1,0 +1,24 @@
+# Rust development profile - includes core, git, and rust tools
+include:
+  - ../core.yaml
+  - ../git.yaml
+  - ../languages/rust.yaml
+
+# Additional rust-specific tools can be defined here
+tools:
+  - name: cargo_new
+    description: Create a new Rust project
+    command: cargo
+    args:
+      - name: name
+        description: Name of the new project
+        required: true
+        type: string
+        cli_flag: null
+      - name: lib
+        description: Create a library project instead of binary
+        required: false
+        type: boolean
+        cli_flag: "--lib"
+    static_flags:
+      - "new"

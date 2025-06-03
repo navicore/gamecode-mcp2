@@ -1,0 +1,70 @@
+# Core tools available in all modes
+tools:
+  - name: read_file
+    description: Read the contents of a file
+    command: cat
+    args:
+      - name: path
+        description: Path to the file to read
+        required: true
+        type: string
+        cli_flag: null  # Positional argument
+
+  - name: write_file
+    description: Write content to a file
+    command: internal
+    internal_handler: write_file
+    args:
+      - name: path
+        description: Path to the file to write
+        required: true
+        type: string
+      - name: content
+        description: Content to write to the file
+        required: true
+        type: string
+
+  - name: list_files
+    description: List files in a directory
+    command: internal
+    internal_handler: list_files
+    args:
+      - name: path
+        description: Directory path (defaults to current directory)
+        required: false
+        type: string
+        default: "."
+
+  - name: search_files
+    description: Search for files by name pattern
+    command: find
+    args:
+      - name: path
+        description: Directory to search in
+        required: false
+        type: string
+        default: "."
+        cli_flag: null
+      - name: pattern
+        description: Name pattern to search for
+        required: true
+        type: string
+        cli_flag: "-name"
+
+  - name: grep
+    description: Search file contents using ripgrep
+    command: rg
+    args:
+      - name: pattern
+        description: Pattern to search for
+        required: true
+        type: string
+        cli_flag: null
+      - name: path
+        description: Path to search in
+        required: false
+        type: string
+        default: "."
+        cli_flag: null
+    static_flags:
+      - "--json"

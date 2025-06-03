@@ -1,0 +1,61 @@
+# Rust-specific development tools
+tools:
+  - name: cargo_build
+    description: Build a Rust project
+    command: cargo
+    args:
+      - name: release
+        description: Build in release mode
+        required: false
+        type: boolean
+        cli_flag: "--release"
+    static_flags:
+      - "build"
+
+  - name: cargo_test
+    description: Run tests in a Rust project
+    command: cargo
+    args:
+      - name: test_name
+        description: Specific test to run
+        required: false
+        type: string
+        cli_flag: null
+      - name: release
+        description: Run tests in release mode
+        required: false
+        type: boolean
+        cli_flag: "--release"
+    static_flags:
+      - "test"
+
+  - name: cargo_fmt
+    description: Format Rust code using rustfmt
+    command: cargo
+    args:
+      - name: check
+        description: Check formatting without making changes
+        required: false
+        type: boolean
+        cli_flag: "--check"
+    static_flags:
+      - "fmt"
+
+  - name: cargo_clippy
+    description: Run Clippy lints on Rust code
+    command: cargo
+    args:
+      - name: fix
+        description: Automatically fix warnings
+        required: false
+        type: boolean
+        cli_flag: "--fix"
+    static_flags:
+      - "clippy"
+
+  - name: cargo_check
+    description: Check a Rust project for errors without building
+    command: cargo
+    args: []
+    static_flags:
+      - "check"

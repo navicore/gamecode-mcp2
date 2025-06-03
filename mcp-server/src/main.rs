@@ -26,9 +26,28 @@ async fn main() -> Result<()> {
 
     // Load tools
     let mut tool_manager = ToolManager::new();
-    if let Err(e) = tool_manager.load_from_default_locations().await {
-        warn!("Failed to load tools: {}", e);
-        warn!("The server will start but no tools will be available.");
+
+    // Check for mode override
+    if let Ok(mode) = std::env::var("GAMECODE_MODE") {
+        info!("Loading tools for mode: {}", mode);
+        if let Err(e) = tool_manager.load_mode(&mode).await {
+            warn!("Failed to load mode {}: {}", mode, e);
+            warn!("Falling back to auto-detection");
+            if let Err(e) = tool_manager.detect_and_load_mode().await {
+                warn!("Failed to auto-detect mode: {}", e);
+                warn!("The server will start but no tools will be available.");
+            }
+        }
+    } else {
+        // Try auto-detection first
+        if let Err(e) = tool_manager.detect_and_load_mode().await {
+            warn!("Failed to auto-detect mode: {}", e);
+            // Fall back to default locations
+            if let Err(e) = tool_manager.load_from_default_locations().await {
+                warn!("Failed to load tools: {}", e);
+                warn!("The server will start but no tools will be available.");
+            }
+        }
     }
 
     let handler = RequestHandler::new(tool_manager);
