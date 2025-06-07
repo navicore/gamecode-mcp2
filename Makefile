@@ -36,7 +36,7 @@ clean:
 
 # Install the binary
 install:
-	cargo install --path .
+	cargo install --path mcp-server
 
 # Run the server (for development)
 run:
