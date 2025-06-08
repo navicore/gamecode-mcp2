@@ -8,6 +8,9 @@ edition = "2024"
 authors = ["Ed Sweeney <ed@onextent.com>"]
 license = "MIT"
 repository = "https://github.com/navicore/gamecode-mcp2"
+description = "Minimal, auditable Model Context Protocol server for safe LLM-to-system interaction"
+keywords = ["mcp", "llm", "security", "minimal", "auditable"]
+categories = ["command-line-interface", "development-tools"]
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }

@@ -1,6 +1,18 @@
 # GameCode MCP2
 
-A clean implementation of the Model Context Protocol (MCP) for dynamic tool integration.
+A clean (and possibly naive) implementation of the Model Context Protocol (MCP)
+for tool integration.
+
+Motivation - as few dependencies as possible, as simple and auditable a
+configuration as possible.
+
+## ⚠️ Security Notice
+
+MCP is early technology. Allowing LLMs to execute system commands is inherently risky.
+This implementation prioritizes auditability over features - you can read every line
+that processes LLM requests. Even so, proceed with caution. Only time will tell if
+MCP's approach is sound.
+
 
 ## Key Features
 

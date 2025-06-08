@@ -1,3 +1,6 @@
+// Minimal MCP server implementation for auditable LLM-to-system interaction.
+// No external text processing - all JSON handling is explicit and traceable.
+
 use anyhow::Result;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -13,7 +16,7 @@ use tools::ToolManager;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
+    // Tracing to stderr only - stdout is reserved for JSON-RPC protocol
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -24,7 +27,7 @@ async fn main() -> Result<()> {
 
     info!("Starting GameCode MCP Server v2...");
 
-    // Load tools
+    // Tool loading is explicit - no implicit tool discovery
     let mut tool_manager = ToolManager::new();
 
     // Check for mode override
@@ -52,7 +55,7 @@ async fn main() -> Result<()> {
 
     let handler = RequestHandler::new(tool_manager);
 
-    // Setup stdio
+    // Stdio is our only transport - no network, no files
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin);
@@ -60,7 +63,7 @@ async fn main() -> Result<()> {
 
     info!("MCP server ready, waiting for requests...");
 
-    // Main message loop
+    // Single-threaded message loop - one request at a time
     loop {
         let mut line = String::new();
         match reader.read_line(&mut line).await {
@@ -76,10 +79,10 @@ async fn main() -> Result<()> {
 
                 debug!("Received: {}", line);
 
-                // Parse JSON-RPC message
+                // Parse as generic Value first - no implicit deserialization
                 match serde_json::from_str::<Value>(line) {
                     Ok(value) => {
-                        // Check if it's a request or notification
+                        // Explicit request/notification discrimination by id field
                         if value.get("id").is_some() {
                             // It's a request
                             match serde_json::from_value::<JsonRpcRequest>(value) {

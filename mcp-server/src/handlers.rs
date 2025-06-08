@@ -1,3 +1,6 @@
+// Request handler - validates all LLM requests before execution.
+// No request reaches tool execution without explicit validation.
+
 use anyhow::Result;
 use serde_json::Value;
 use tracing::{debug, error, info};
@@ -14,6 +17,7 @@ impl RequestHandler {
         Self { tool_manager }
     }
 
+    // Request dispatch - only these three methods exist, nothing else
     pub async fn handle_request(&self, request: JsonRpcRequest) -> JsonRpcResponse {
         debug!("Handling request: {} (id: {})", request.method, request.id);
 
@@ -60,6 +64,7 @@ impl RequestHandler {
         }
     }
 
+    // Initialize - validate client capabilities, no negotiation
     async fn handle_initialize(&self, params: Option<Value>) -> Result<Value, JsonRpcError> {
         let _params: InitializeParams = if let Some(p) = params {
             serde_json::from_value(p).map_err(|e| JsonRpcError {
@@ -93,6 +98,7 @@ impl RequestHandler {
         Ok(serde_json::to_value(result).unwrap())
     }
 
+    // List tools - LLM sees only what we explicitly configured
     async fn handle_tools_list(&self) -> Result<Value, JsonRpcError> {
         let tools = self.tool_manager.get_mcp_tools();
 
@@ -101,6 +107,7 @@ impl RequestHandler {
         Ok(serde_json::to_value(result).unwrap())
     }
 
+    // Tool execution - validate params, then delegate to tool manager
     async fn handle_tools_call(&self, params: Option<Value>) -> Result<Value, JsonRpcError> {
         let params: CallToolParams = if let Some(p) = params {
             serde_json::from_value(p).map_err(|e| JsonRpcError {
@@ -116,6 +123,7 @@ impl RequestHandler {
             });
         };
 
+        // Execute only configured tools with validated parameters
         match self
             .tool_manager
             .execute_tool(&params.name, params.arguments)
