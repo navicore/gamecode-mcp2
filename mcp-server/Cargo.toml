@@ -1,5 +1,5 @@
 [package]
-name = "mcp-server"
+name = "gamecode-mcp2"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
