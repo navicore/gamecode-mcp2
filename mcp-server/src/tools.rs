@@ -1,3 +1,6 @@
+// Tool execution is the critical security boundary.
+// Every tool must be explicitly configured - no implicit capabilities.
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -9,6 +12,7 @@ use tracing::{debug, info};
 
 use crate::protocol::Tool;
 
+// Tools config - what tools exist is controlled by YAML, not code
 #[derive(Debug, Deserialize)]
 pub struct ToolsConfig {
     #[serde(default)]
@@ -55,6 +59,7 @@ impl ToolManager {
         }
     }
 
+    // Explicit tool loading - admin controls what tools are available
     pub async fn load_from_file(&mut self, path: &Path) -> Result<()> {
         info!("Loading tools from: {}", path.display());
 
@@ -62,6 +67,7 @@ impl ToolManager {
             .await
             .context("Failed to read tools file")?;
 
+        // YAML parsing is the only text processing we can't avoid
         let config: ToolsConfig = serde_yaml::from_str(&content).context("Failed to parse YAML")?;
 
         // Process includes first
@@ -212,6 +218,7 @@ impl ToolManager {
         self.load_from_default_locations().await
     }
 
+    // Convert to MCP schema - LLM sees exactly this, nothing hidden
     pub fn get_mcp_tools(&self) -> Vec<Tool> {
         self.tools
             .values()
@@ -266,18 +273,19 @@ impl ToolManager {
             .collect()
     }
 
+    // Tool execution - the critical security boundary
     pub async fn execute_tool(&self, name: &str, args: Value) -> Result<Value> {
         let tool = self
             .tools
             .get(name)
             .ok_or_else(|| anyhow::anyhow!("Tool '{}' not found", name))?;
 
-        // Handle internal handlers
+        // Internal handlers are hardcoded - no dynamic code execution
         if let Some(handler) = &tool.internal_handler {
             return self.execute_internal_handler(handler, &args).await;
         }
 
-        // Execute external command
+        // External commands - only what's explicitly configured
         if tool.command.is_empty() || tool.command == "internal" {
             return Err(anyhow::anyhow!("Tool '{}' has no command", name));
         }
@@ -289,7 +297,7 @@ impl ToolManager {
             cmd.arg(flag);
         }
 
-        // Add arguments
+        // Argument construction - no shell interpretation, direct args only
         if let Some(obj) = args.as_object() {
             for arg_def in &tool.args {
                 if let Some(value) = obj.get(&arg_def.name) {
@@ -331,6 +339,7 @@ impl ToolManager {
         }
     }
 
+    // Internal handlers - hardcoded, no dynamic evaluation
     async fn execute_internal_handler(&self, handler: &str, args: &Value) -> Result<Value> {
         match handler {
             "add" => {

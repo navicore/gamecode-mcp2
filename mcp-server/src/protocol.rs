@@ -1,7 +1,10 @@
+// Minimal protocol definitions - only what MCP requires, nothing more.
+// All types are explicit with no hidden behavior.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-// JSON-RPC 2.0 base types
+// JSON-RPC 2.0 base types - standard protocol, no extensions
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
@@ -37,7 +40,7 @@ pub struct JsonRpcNotification {
     pub params: Option<Value>,
 }
 
-// MCP specific types
+// MCP protocol types - minimal surface area for LLM interaction
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InitializeParams {
     #[serde(rename = "protocolVersion")]
@@ -84,7 +87,7 @@ pub struct ServerInfo {
     pub version: String,
 }
 
-// Tool-related types
+// Tool schema is explicit - LLM sees exactly what we define
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
     pub name: String,
@@ -118,7 +121,7 @@ pub enum ContentBlock {
     Text { text: String },
 }
 
-// Error codes
+// Standard JSON-RPC error codes - no custom extensions
 pub const PARSE_ERROR: i32 = -32700;
 pub const INVALID_REQUEST: i32 = -32600;
 pub const METHOD_NOT_FOUND: i32 = -32601;
