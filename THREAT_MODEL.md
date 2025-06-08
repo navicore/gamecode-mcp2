@@ -61,7 +61,7 @@ LLM: "I'll help you read that file" [generates known path traversal exploit]
 
 ## The Statistical Risk
 
-As you noted, test coverage on trillion-parameter models rounds to zero. We must assume:
+Test coverage on trillion-parameter models rounds to zero. We must assume:
 
 1. **Hidden Patterns**: The model can generate exploits we haven't seen
 2. **Emergent Outputs**: Token combinations that produce unexpected text
@@ -89,8 +89,9 @@ Watch for:
 
 ## Conclusion
 
-The MCP protocol enables powerful automation but introduces risk. This implementation 
-makes risks visible and controllable, but cannot eliminate them. The LLM is a 
-complex statistical model trained on vast text including exploits and attacks.
+The MCP protocol enables powerful automation but introduces risk. This
+implementation makes risks visible and controllable, but cannot eliminate them.
+The LLM is a complex statistical model trained on vast text including exploits
+and attacks.
 
 Treating its output as potentially hostile input is prudent engineering.
