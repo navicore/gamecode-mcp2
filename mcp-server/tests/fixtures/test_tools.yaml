@@ -1,0 +1,50 @@
+# Test tools for unit tests
+tools:
+  - name: echo_test
+    description: Test tool that echoes input
+    command: echo
+    args:
+      - name: message
+        description: Message to echo
+        required: true
+        type: string
+        cli_flag: null  # Positional
+
+  - name: math_add
+    description: Internal tool for addition
+    command: internal
+    internal_handler: add
+    args:
+      - name: a
+        description: First number
+        required: true
+        type: number
+      - name: b
+        description: Second number
+        required: true
+        type: number
+
+  - name: file_writer
+    description: Test file writing
+    command: internal
+    internal_handler: write_file
+    args:
+      - name: path
+        description: File path
+        required: true
+        type: string
+      - name: content
+        description: Content to write
+        required: true
+        type: string
+
+  - name: list_dir
+    description: List directory contents
+    command: internal
+    internal_handler: list_files
+    args:
+      - name: path
+        description: Directory path
+        required: false
+        type: string
+        default: "."
