@@ -1,0 +1,71 @@
+# Tools for diagram generation with Claude
+# Requires PlantUML to be installed (brew install plantuml)
+
+tools:
+  - name: render_plantuml
+    description: Render PlantUML diagram to PNG/SVG file
+    command: /bin/sh
+    static_flags:
+      - "-c"
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: script
+        description: Shell script to execute PlantUML
+        required: true
+        type: string
+        cli_flag: null
+        # This will be: echo "$plantuml_text" | plantuml -pipe -tpng > output.png
+
+  - name: create_diagram
+    description: Create a diagram from PlantUML text and save to file
+    command: internal
+    internal_handler: create_diagram  # Would need implementation
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+    args:
+      - name: filename
+        description: Output filename (without extension, in ./diagrams/)
+        required: true
+        type: string
+        is_path: true
+      - name: plantuml
+        description: PlantUML diagram text
+        required: true
+        type: string
+      - name: format
+        description: Output format (png or svg)
+        required: false
+        type: string
+        default: "png"
+
+  # Safer approach - write PlantUML source only
+  - name: save_plantuml_source
+    description: Save PlantUML source code to a .puml file
+    command: internal
+    internal_handler: write_file
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+    args:
+      - name: path
+        description: Output path (relative to ./diagrams/)
+        required: true
+        type: string
+        is_path: true
+      - name: content
+        description: PlantUML source code
+        required: true
+        type: string
+
+  # Tool to list generated diagrams
+  - name: list_diagrams
+    description: List all diagrams in the output directory
+    command: /bin/ls
+    static_flags:
+      - "-la"
+      - "./diagrams/"
+    args: []
