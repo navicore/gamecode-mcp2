@@ -1,0 +1,83 @@
+# Minimal diagram tools - safest approach
+# Just saves PlantUML/Mermaid source files for manual rendering
+
+tools:
+  # Save PlantUML source files only
+  - name: save_plantuml
+    description: Save PlantUML diagram source to a .puml file
+    command: internal
+    internal_handler: write_file
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: path
+        description: Filename (will be saved in ./diagrams/ directory)
+        required: true
+        type: string
+        is_path: true
+      - name: content
+        description: PlantUML source code
+        required: true
+        type: string
+
+  # Save Mermaid source files
+  - name: save_mermaid
+    description: Save Mermaid diagram source to a .mmd file
+    command: internal
+    internal_handler: write_file
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: path
+        description: Filename (will be saved in ./diagrams/ directory)
+        required: true
+        type: string
+        is_path: true
+      - name: content
+        description: Mermaid source code
+        required: true
+        type: string
+
+  # List saved diagram sources
+  - name: list_diagram_sources
+    description: List all diagram source files
+    command: /usr/bin/find
+    static_flags:
+      - "./diagrams"
+      - "-name"
+      - "*.puml"
+      - "-o"
+      - "-name"
+      - "*.mmd"
+    args: []
+
+  # Read a diagram source file
+  - name: read_diagram
+    description: Read a saved diagram source file
+    command: /bin/cat
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: path
+        description: Path to diagram file
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+# Usage:
+# 1. Claude saves diagram source: save_plantuml("architecture.puml", "@startuml...")
+# 2. User renders manually: plantuml diagrams/architecture.puml
+# 3. Or for Mermaid: mmdc -i diagrams/flow.mmd -o diagrams/flow.png
+#
+# This approach:
+# - No automatic code execution
+# - User controls rendering process
+# - Source files can be version controlled
+# - No resource exhaustion risks

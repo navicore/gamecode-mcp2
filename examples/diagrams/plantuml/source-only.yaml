@@ -1,0 +1,89 @@
+# PlantUML source file generation (no automatic rendering)
+# Safe for all environments - just creates text files
+#
+# Why use this over MCP host tools?
+# - Most MCP hosts don't understand PlantUML syntax
+# - Provides diagram-specific file organization
+# - Validates PlantUML structure (future enhancement)
+#
+# Usage: 
+#   GAMECODE_TOOLS_FILE=examples/diagrams/plantuml/source-only.yaml gamecode-mcp2
+#
+# Then ask: "Create a class diagram for the authentication system"
+
+tools:
+  - name: create_plantuml
+    description: Create a PlantUML diagram source file
+    command: internal
+    internal_handler: write_file
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: path
+        description: Filename (saved to ./diagrams/*.puml)
+        required: true
+        type: string
+        is_path: true
+      - name: content
+        description: PlantUML source code
+        required: true
+        type: string
+
+  - name: list_diagrams
+    description: List all PlantUML diagram files
+    command: /usr/bin/find
+    static_flags:
+      - "./diagrams"
+      - "-name"
+      - "*.puml"
+      - "-type"
+      - "f"
+    validation:
+      validate_args: false
+    args: []
+
+  - name: read_diagram
+    description: Read a PlantUML source file
+    command: /bin/cat
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: file
+        description: Path to .puml file
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  - name: validate_plantuml
+    description: Check if PlantUML syntax is valid (requires plantuml installed)
+    command: /usr/local/bin/plantuml
+    static_flags:
+      - "-syntax"
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: file
+        description: Path to .puml file to validate
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+# Optional: Add diagram templates
+  - name: plantuml_template
+    description: Get a PlantUML template for common diagram types
+    command: /bin/echo
+    args:
+      - name: type
+        description: Template type (class|sequence|component|usecase)
+        required: true
+        type: string
+        cli_flag: null
+    # This would be better as an internal handler that returns actual templates
