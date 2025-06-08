@@ -1,6 +1,6 @@
-use mcp_server::handlers::RequestHandler;
-use mcp_server::protocol::*;
-use mcp_server::tools::ToolManager;
+use gamecode_mcp2::handlers::RequestHandler;
+use gamecode_mcp2::protocol::*;
+use gamecode_mcp2::tools::ToolManager;
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ async fn setup_handler() -> RequestHandler {
 #[tokio::test]
 async fn test_initialize_request() {
     let handler = setup_handler().await;
-    
+
     let request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: json!(1),
@@ -30,12 +30,16 @@ async fn test_initialize_request() {
             }
         })),
     };
-    
+
     let response = handler.handle_request(request).await;
-    
-    assert!(response.error.is_none(), "Initialize failed: {:?}", response.error);
+
+    assert!(
+        response.error.is_none(),
+        "Initialize failed: {:?}",
+        response.error
+    );
     assert!(response.result.is_some());
-    
+
     let result = response.result.unwrap();
     assert_eq!(result["protocolVersion"], "2024-11-05");
     assert!(result["capabilities"]["tools"].is_object());
@@ -45,23 +49,27 @@ async fn test_initialize_request() {
 #[tokio::test]
 async fn test_tools_list_request() {
     let handler = setup_handler().await;
-    
+
     let request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: json!(2),
         method: "tools/list".to_string(),
         params: None,
     };
-    
+
     let response = handler.handle_request(request).await;
-    
-    assert!(response.error.is_none(), "List tools failed: {:?}", response.error);
+
+    assert!(
+        response.error.is_none(),
+        "List tools failed: {:?}",
+        response.error
+    );
     assert!(response.result.is_some());
-    
+
     let result = response.result.unwrap();
     let tools = result["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 4, "Expected 4 tools from test fixture");
-    
+
     // Verify tool structure
     for tool in tools {
         assert!(tool["name"].is_string());
@@ -73,7 +81,7 @@ async fn test_tools_list_request() {
 #[tokio::test]
 async fn test_tools_call_request() {
     let handler = setup_handler().await;
-    
+
     let request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: json!(3),
@@ -86,18 +94,22 @@ async fn test_tools_call_request() {
             }
         })),
     };
-    
+
     let response = handler.handle_request(request).await;
-    
-    assert!(response.error.is_none(), "Tool call failed: {:?}", response.error);
+
+    assert!(
+        response.error.is_none(),
+        "Tool call failed: {:?}",
+        response.error
+    );
     assert!(response.result.is_some());
-    
+
     let result = response.result.unwrap();
     assert!(result["content"].is_array());
-    
+
     let content = &result["content"][0];
     assert_eq!(content["type"], "text");
-    
+
     // Parse the text content to verify the result
     let text = content["text"].as_str().unwrap();
     let tool_result: serde_json::Value = serde_json::from_str(text).unwrap();
@@ -107,16 +119,16 @@ async fn test_tools_call_request() {
 #[tokio::test]
 async fn test_invalid_method() {
     let handler = setup_handler().await;
-    
+
     let request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: json!(4),
         method: "invalid/method".to_string(),
         params: None,
     };
-    
+
     let response = handler.handle_request(request).await;
-    
+
     assert!(response.error.is_some());
     assert_eq!(response.error.unwrap().code, METHOD_NOT_FOUND);
 }
@@ -124,16 +136,16 @@ async fn test_invalid_method() {
 #[tokio::test]
 async fn test_missing_params() {
     let handler = setup_handler().await;
-    
+
     let request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: json!(5),
         method: "initialize".to_string(),
         params: None, // Missing required params
     };
-    
+
     let response = handler.handle_request(request).await;
-    
+
     assert!(response.error.is_some());
     assert_eq!(response.error.unwrap().code, INVALID_PARAMS);
 }
@@ -141,7 +153,7 @@ async fn test_missing_params() {
 #[tokio::test]
 async fn test_tool_call_nonexistent_tool() {
     let handler = setup_handler().await;
-    
+
     let request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: json!(6),
@@ -151,15 +163,18 @@ async fn test_tool_call_nonexistent_tool() {
             "arguments": {}
         })),
     };
-    
+
     let response = handler.handle_request(request).await;
-    
-    assert!(response.error.is_none(), "Should return error in content, not JSON-RPC error");
+
+    assert!(
+        response.error.is_none(),
+        "Should return error in content, not JSON-RPC error"
+    );
     assert!(response.result.is_some());
-    
+
     let result = response.result.unwrap();
     assert_eq!(result["isError"], true);
-    
+
     let content = &result["content"][0];
     assert!(content["text"].as_str().unwrap().contains("not found"));
 }
@@ -167,13 +182,13 @@ async fn test_tool_call_nonexistent_tool() {
 #[tokio::test]
 async fn test_notification_handling() {
     let handler = setup_handler().await;
-    
+
     let notification = JsonRpcNotification {
         jsonrpc: "2.0".to_string(),
         method: "notifications/initialized".to_string(),
         params: None,
     };
-    
+
     // Notifications don't return responses, just verify no panic
     handler.handle_notification(notification).await;
 }
