@@ -11,6 +11,7 @@ use tokio::process::Command;
 use tracing::{debug, info};
 
 use crate::protocol::Tool;
+use crate::validation;
 
 // Tools config - what tools exist is controlled by YAML, not code
 #[derive(Debug, Deserialize)]
@@ -34,6 +35,18 @@ pub struct ToolDefinition {
     pub internal_handler: Option<String>,
     #[allow(dead_code)]
     pub example_output: Option<Value>,
+    #[serde(default)]
+    pub validation: ValidationConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ValidationConfig {
+    #[serde(default)]
+    pub validate_paths: bool,
+    #[serde(default)]
+    pub allow_absolute_paths: bool,
+    #[serde(default)]  
+    pub validate_args: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -46,6 +59,8 @@ pub struct ArgDefinition {
     pub cli_flag: Option<String>,
     #[allow(dead_code)]
     pub default: Option<String>,
+    #[serde(default)]
+    pub is_path: bool,  // Mark arguments that are file paths
 }
 
 pub struct ToolManager {
@@ -301,12 +316,26 @@ impl ToolManager {
         if let Some(obj) = args.as_object() {
             for arg_def in &tool.args {
                 if let Some(value) = obj.get(&arg_def.name) {
+                    // Optional validation
+                    if tool.validation.validate_args {
+                        validation::validate_typed_value(value, &arg_def.arg_type)?;
+                    }
+                    
+                    // Path validation if marked as path
+                    if arg_def.is_path && tool.validation.validate_paths {
+                        if let Some(path_str) = value.as_str() {
+                            validation::validate_path(path_str, tool.validation.allow_absolute_paths)?;
+                        }
+                    }
+                    
+                    let arg_value = value.to_string().trim_matches('"').to_string();
+                    
                     if let Some(cli_flag) = &arg_def.cli_flag {
                         cmd.arg(cli_flag);
-                        cmd.arg(value.to_string().trim_matches('"'));
+                        cmd.arg(&arg_value);
                     } else {
                         // Positional argument
-                        cmd.arg(value.to_string().trim_matches('"'));
+                        cmd.arg(&arg_value);
                     }
                 }
             }

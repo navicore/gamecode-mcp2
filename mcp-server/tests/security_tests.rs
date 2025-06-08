@@ -13,7 +13,7 @@ async fn test_path_traversal_prevention() {
     // Try various path traversal attempts
     let traversal_attempts = vec![
         "../../../etc/passwd",
-        "../../../windows/system32",  // Windows path with forward slashes
+        "../../../../../../etc/shadow",
         "/etc/passwd",
         "~/.ssh/id_rsa",
     ];
