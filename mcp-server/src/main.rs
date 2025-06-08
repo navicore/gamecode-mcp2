@@ -17,6 +17,26 @@ use tools::ToolManager;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Handle command-line arguments
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--help" | "-h" => {
+                print_help();
+                return Ok(());
+            }
+            "--version" | "-V" => {
+                println!("gamecode-mcp2 {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            _ => {
+                eprintln!("Unknown argument: {}", args[1]);
+                eprintln!("Try 'gamecode-mcp2 --help' for more information.");
+                std::process::exit(1);
+            }
+        }
+    }
+    
     // Tracing to stderr only - stdout is reserved for JSON-RPC protocol
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -153,4 +173,41 @@ async fn main() -> Result<()> {
 
     info!("MCP server shutting down");
     Ok(())
+}
+
+fn print_help() {
+    println!("gamecode-mcp2 {}", env!("CARGO_PKG_VERSION"));
+    println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+    println!();
+    println!("USAGE:");
+    println!("    gamecode-mcp2 [OPTIONS]");
+    println!();
+    println!("OPTIONS:");
+    println!("    -h, --help       Print help information");
+    println!("    -V, --version    Print version information");
+    println!();
+    println!("DESCRIPTION:");
+    println!("    An MCP server that communicates via stdio (stdin/stdout).");
+    println!("    Configure tools in tools.yaml or via GAMECODE_TOOLS_FILE.");
+    println!("    ");
+    println!("    This server is designed to be spawned by MCP clients like");
+    println!("    Claude Desktop. It does not accept network connections.");
+    println!();
+    println!("ENVIRONMENT:");
+    println!("    GAMECODE_TOOLS_FILE    Path to tools YAML configuration");
+    println!("    GAMECODE_MODE          Load a specific mode/profile");
+    println!("    RUST_LOG               Set logging level (default: info)");
+    println!();
+    println!("EXAMPLES:");
+    println!("    # Run with default tool detection");
+    println!("    gamecode-mcp2");
+    println!();
+    println!("    # Run with specific tools file");
+    println!("    GAMECODE_TOOLS_FILE=~/my-tools.yaml gamecode-mcp2");
+    println!();
+    println!("    # Run in Python development mode");
+    println!("    GAMECODE_MODE=python-dev gamecode-mcp2");
+    println!();
+    println!("MORE INFO:");
+    println!("    Repository: {}", env!("CARGO_PKG_REPOSITORY"));
 }
