@@ -224,7 +224,13 @@ include:
 
 ### Docker/Kubernetes
 
-The bot is designed to work seamlessly in containerized environments:
+The bot is designed to work seamlessly in containerized environments.
+
+**Note on Authentication**:
+- **Development**: Uses Claude Desktop with inherited shell environment
+- **Production**: Typically uses AWS Bedrock or Vertex AI with proper IAM/service account auth
+
+For production with Bedrock:
 
 1. **Environment Variables**: In production, environment variables from K8s ConfigMaps/Secrets take precedence over `.env` files
 2. **No .env in Production**: The Docker image doesn't include `.env` files
@@ -251,6 +257,25 @@ kubectl logs -l app=claude-slack-bot
 3. **Default values**: Used if neither is set
 
 This is handled automatically by `python-dotenv` with `override=False`.
+
+#### Production with AWS Bedrock
+
+In production, you'd typically:
+1. Use a different `CLAUDE_COMMAND` that wraps Bedrock API calls
+2. Configure AWS credentials via K8s secrets/IAM roles
+3. No need for Claude Desktop authentication
+
+Example K8s secret for Bedrock:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bedrock-credentials
+data:
+  AWS_ACCESS_KEY_ID: <base64>
+  AWS_SECRET_ACCESS_KEY: <base64>
+  AWS_REGION: <base64>
+```
 
 ## Troubleshooting
 

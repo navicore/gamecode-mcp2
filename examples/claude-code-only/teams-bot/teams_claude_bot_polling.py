@@ -43,7 +43,8 @@ POLLING_INTERVAL = int(os.environ.get("POLLING_INTERVAL", "5"))  # seconds
 
 # Claude Configuration
 CLAUDE_COMMAND = os.environ.get("CLAUDE_COMMAND", "claude")
-ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "gamecode-mcp2:*")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-3-5-sonnet-latest")
+ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "mcp__gamecode__read_file,mcp__gamecode__list_files")
 MAX_PROMPT_LENGTH = int(os.environ.get("MAX_PROMPT_LENGTH", "1000"))
 TIMEOUT_SECONDS = int(os.environ.get("CLAUDE_TIMEOUT", "30"))
 
@@ -234,9 +235,9 @@ class TeamsClaudeBot:
         """Execute Claude Code CLI with restrictions."""
         cmd = [
             CLAUDE_COMMAND,
-            "-p",  # Non-interactive mode
+            "--model", CLAUDE_MODEL,
             "--allowedTools", ALLOWED_TOOLS,
-            prompt  # Prompt goes last
+            "-p", prompt  # -p flag with prompt
         ]
         
         logger.info(f"Executing: {' '.join(cmd)}")

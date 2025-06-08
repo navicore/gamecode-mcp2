@@ -34,7 +34,8 @@ TEAMS_WEBHOOK_SECRET = os.environ.get("TEAMS_WEBHOOK_SECRET", "").encode()
 
 # Claude Configuration
 CLAUDE_COMMAND = os.environ.get("CLAUDE_COMMAND", "claude")
-ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "gamecode-mcp2:*")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-3-5-sonnet-latest")
+ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "mcp__gamecode__read_file,mcp__gamecode__list_files")
 TIMEOUT_SECONDS = int(os.environ.get("CLAUDE_TIMEOUT", "30"))
 
 
@@ -95,9 +96,9 @@ def execute_claude(prompt: str) -> str:
     """Execute Claude with restrictions."""
     cmd = [
         CLAUDE_COMMAND,
-        "-p",  # Non-interactive mode
+        "--model", CLAUDE_MODEL,
         "--allowedTools", ALLOWED_TOOLS,
-        prompt  # Prompt goes last
+        "-p", prompt  # -p flag with prompt
     ]
     
     try:

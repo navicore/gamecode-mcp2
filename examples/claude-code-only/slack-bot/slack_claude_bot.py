@@ -30,9 +30,29 @@ from dotenv import load_dotenv
 # The .env file is only used for local development
 load_dotenv(override=False)  # Explicit: don't override existing env vars
 
+# Diagnostic: Print key env vars at startup
+print(f"[STARTUP] DEBUG={os.environ.get('DEBUG', 'NOT SET')}")
+print(f"[STARTUP] CLAUDE_COMMAND={os.environ.get('CLAUDE_COMMAND', 'NOT SET')}")
+
+
+# For development: Ensure we have full shell PATH
+# This helps find claude and its auth config
+if "PATH" in os.environ:
+    # Common paths where claude might be installed
+    extra_paths = [
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        os.path.expanduser("~/.local/bin"),
+    ]
+    current_path = os.environ["PATH"]
+    for path in extra_paths:
+        if path not in current_path:
+            os.environ["PATH"] = f"{path}:{current_path}"
+
 # Configure logging
+log_level = logging.DEBUG if os.environ.get("DEBUG", "").lower() == "true" else logging.INFO
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('claude_bot.log'),
@@ -40,6 +60,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+logger.debug(f"Logging configured at {logging.getLevelName(log_level)} level")
 
 # Configuration
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
@@ -47,6 +68,7 @@ SLACK_APP_TOKEN = os.environ["SLACK_APP_TOKEN"]
 
 # Claude Code configuration
 CLAUDE_COMMAND = os.environ.get("CLAUDE_COMMAND", "claude")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")
 ALLOWED_TOOLS = os.environ.get(
     "CLAUDE_ALLOWED_TOOLS", "mcp__gamecode__read_file,mcp__gamecode__list_files")
 MAX_PROMPT_LENGTH = int(os.environ.get("MAX_PROMPT_LENGTH", "1000"))
@@ -55,6 +77,9 @@ TIMEOUT_SECONDS = int(os.environ.get("CLAUDE_TIMEOUT", "30"))
 # Optional: Restrict to specific channels or users
 ALLOWED_CHANNELS = os.environ.get("ALLOWED_CHANNELS", "").split(",")
 ALLOWED_USERS = os.environ.get("ALLOWED_USERS", "").split(",")
+
+# Debug mode to help diagnose auth issues
+DEBUG_MODE = os.environ.get("DEBUG", "").lower() == "true"
 
 
 class ClaudeSlackBot:
@@ -197,27 +222,72 @@ class ClaudeSlackBot:
         """Execute Claude Code CLI with restrictions."""
         cmd = [
             CLAUDE_COMMAND,
+            "--model", CLAUDE_MODEL,
             "--allowedTools", ALLOWED_TOOLS,
             "-p", prompt
         ]
 
-        logger.info(f"Executing: {' '.join(cmd)}")
+        # Log the command with proper quoting for debugging
+        import shlex
+        logger.info(f"Executing: {shlex.join(cmd)}")
+        
+        if DEBUG_MODE:
+            # Log environment variables that might affect Claude auth
+            claude_env_vars = {k: v for k, v in os.environ.items() 
+                             if 'CLAUDE' in k or 'ANTHROPIC' in k or 'CONFIG' in k}
+            logger.debug(f"Claude-related env vars: {claude_env_vars}")
+            logger.debug(f"HOME: {os.environ.get('HOME')}")
+            logger.debug(f"USER: {os.environ.get('USER')}")
+            logger.debug(f"PATH: {os.environ.get('PATH')}")
+            
+            # Also check what the shell sees
+            debug_result = subprocess.run(
+                ["zsh", "-i", "-l", "-c", "echo HOME=$HOME && echo USER=$USER && which claude && ls -la ~/.claude 2>/dev/null || echo 'No .claude dir'"],
+                capture_output=True,
+                text=True
+            )
+            logger.debug(f"Shell environment check: {debug_result.stdout}")
+            if debug_result.stderr:
+                logger.debug(f"Shell environment stderr: {debug_result.stderr}")
 
         try:
+            # Run through interactive login zsh shell to get aliases
+            # -i = interactive (loads aliases)
+            # -l = login shell (loads full environment)
+            zsh_cmd = shlex.join(cmd)
+            # Ensure we pass through critical environment variables
+            env = os.environ.copy()
+            # Make sure HOME is set correctly
+            env['HOME'] = os.path.expanduser('~')
+            # Pass USER for any user-specific configs
+            if 'USER' not in env:
+                env['USER'] = os.environ.get('USER', '')
+            
             result = subprocess.run(
-                cmd,
+                ["zsh", "-i", "-l", "-c", zsh_cmd],
                 capture_output=True,
                 text=True,
                 timeout=TIMEOUT_SECONDS,
-                # Disable color output
-                env={**os.environ, "CLAUDE_NO_COLOR": "1"}
+                env=env  # Pass the environment explicitly
             )
 
             if result.returncode == 0:
                 return result.stdout.strip()
             else:
-                error_msg = result.stderr.strip() or "Unknown error"
-                raise Exception(f"Claude returned error: {error_msg}")
+                error_msg = result.stderr.strip()
+                stdout_msg = result.stdout.strip()
+                
+                # Build detailed error message
+                error_parts = [f"Exit code: {result.returncode}"]
+                if error_msg:
+                    error_parts.append(f"Stderr: {error_msg}")
+                if stdout_msg:
+                    error_parts.append(f"Stdout: {stdout_msg}")
+                
+                # Log full command for debugging
+                logger.error(f"Command failed: {shlex.join(cmd)}")
+                
+                raise Exception(" | ".join(error_parts))
 
         except subprocess.TimeoutExpired:
             raise
@@ -295,14 +365,21 @@ def main():
         logger.error("Please set them in .env file or environment")
         return
 
-    # Validate Claude is available
+    # Validate Claude is available (using same shell method as execute)
     try:
-        subprocess.run([CLAUDE_COMMAND, "--version"],
-                       capture_output=True, check=True)
-    except:
-        logger.error(f"Claude Code CLI not found at '{CLAUDE_COMMAND}'")
-        logger.error(
-            "Please install Claude Code or set CLAUDE_COMMAND environment variable")
+        test_cmd = f"{CLAUDE_COMMAND} --version"
+        result = subprocess.run(
+            ["zsh", "-i", "-l", "-c", test_cmd],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            raise Exception(f"Command failed: {result.stderr}")
+        logger.info(f"Claude version: {result.stdout.strip()}")
+    except Exception as e:
+        logger.error(f"Claude Code CLI not found or not working: {e}")
+        logger.error(f"Tried command: {CLAUDE_COMMAND}")
+        logger.error("Please install Claude Code or set CLAUDE_COMMAND environment variable")
         return
 
     # Start bot
