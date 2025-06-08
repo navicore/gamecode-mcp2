@@ -17,6 +17,8 @@ import os
 import subprocess
 import json
 import logging
+import signal
+import sys
 from datetime import datetime
 from typing import Optional, List, Dict
 from slack_sdk import WebClient
@@ -102,9 +104,14 @@ class ClaudeSlackBot:
         # Connect to Slack
         self.socket_client.connect()
 
-        # Keep the program running
-        from threading import Event
-        Event().wait()
+        # Keep the program running with signal handling
+        try:
+            from threading import Event
+            Event().wait()
+        except KeyboardInterrupt:
+            logger.info("Shutting down gracefully...")
+            self.socket_client.close()
+            sys.exit(0)
 
     def process_socket_mode_request(self, client: SocketModeClient, req: SocketModeRequest):
         """Process Socket Mode requests from Slack."""
@@ -268,7 +275,9 @@ class ClaudeSlackBot:
                 capture_output=True,
                 text=True,
                 timeout=TIMEOUT_SECONDS,
-                env=env  # Pass the environment explicitly
+                env=env,  # Pass the environment explicitly
+                # Ensure subprocess gets signals properly
+                preexec_fn=os.setsid if sys.platform != 'win32' else None
             )
 
             if result.returncode == 0:
@@ -354,8 +363,19 @@ class ClaudeSlackBot:
             f.write(json.dumps(audit_entry) + "\n")
 
 
+def signal_handler(signum, frame):
+    """Handle shutdown signals."""
+    logger.info(f"Received signal {signum}, shutting down...")
+    # Use os._exit for immediate termination
+    os._exit(0)
+
+
 def main():
     """Main entry point."""
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     # Validate environment
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
     missing = [var for var in required_vars if not os.environ.get(var)]

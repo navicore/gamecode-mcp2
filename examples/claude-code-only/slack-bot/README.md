@@ -285,6 +285,20 @@ data:
 3. Check `claude_bot.log`
 
 ### Claude errors
+
+#### "Credit balance is too low" error
+If you have a MAX account and get this error:
+1. Check if you have an old `ANTHROPIC_API_KEY` set in your environment
+2. Remove/unset any `ANTHROPIC_API_KEY` - MAX accounts use Desktop auth, not API keys
+3. Having both MAX account and an API key causes authentication conflicts
+
+To fix:
+```bash
+unset ANTHROPIC_API_KEY
+# Remove from .env, .bashrc, .zshrc, etc.
+```
+
+#### Other Claude errors
 1. Verify `claude` command works locally
 2. Check allowed tools configuration
 3. Review timeout settings
