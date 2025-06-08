@@ -89,6 +89,7 @@ class ClaudeSlackBot:
             app_token=SLACK_APP_TOKEN,
             web_client=self.web_client
         )
+        self.stop_event = None
 
     def start(self):
         """Start the Socket Mode client."""
@@ -102,14 +103,16 @@ class ClaudeSlackBot:
         # Connect to Slack
         self.socket_client.connect()
         logger.info("Bot is running. Press Ctrl+C to stop.")
+        logger.info("Note: If Ctrl+C doesn't work, use Ctrl+\\ or kill the process")
 
-        # Keep the program running
+    def stop(self):
+        """Stop the bot gracefully."""
+        logger.info("Stopping bot...")
         try:
-            from threading import Event
-            Event().wait()
-        except (KeyboardInterrupt, SystemExit):
-            logger.info("Shutting down...")
+            self.socket_client.disconnect()
             self.socket_client.close()
+        except:
+            pass
 
     def process_socket_mode_request(self, client: SocketModeClient, req: SocketModeRequest):
         """Process Socket Mode requests from Slack."""
@@ -380,14 +383,37 @@ def main():
         logger.error("Please install Claude Code or set CLAUDE_COMMAND environment variable")
         return
 
-    # Start bot
+    # Create bot instance
     bot = ClaudeSlackBot()
+    
+    # Set up AGGRESSIVE signal handlers that force immediate exit
+    import signal
+    
+    def force_exit_handler(signum, frame):
+        print("\n[FORCE EXIT] Ctrl+C detected, terminating immediately...")
+        os._exit(0)
+    
+    # Override default signal handlers with immediate exit
+    signal.signal(signal.SIGINT, force_exit_handler)
+    signal.signal(signal.SIGTERM, force_exit_handler)
+    
+    # Also catch SIGQUIT (Ctrl+\) as a backup
+    signal.signal(signal.SIGQUIT, force_exit_handler)
+    
     try:
+        # Start the bot
         bot.start()
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
+        
+        # Keep the main thread alive
+        import time
+        while True:
+            time.sleep(0.1)  # Shorter sleep for more responsive shutdown
+            
     except Exception as e:
         logger.error(f"Bot crashed: {e}", exc_info=True)
+    finally:
+        # This likely won't be reached due to os._exit
+        logger.info("Cleanup complete")
 
 
 if __name__ == "__main__":
