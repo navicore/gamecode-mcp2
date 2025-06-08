@@ -1,0 +1,8 @@
+# Invalid YAML for error testing
+tools:
+  - name: invalid_tool
+    description: Missing required fields
+    # Missing command field
+    args:
+      - name: param
+        # Missing required description

@@ -1,0 +1,14 @@
+# Test file with includes
+include:
+  - test_tools.yaml
+
+tools:
+  - name: additional_tool
+    description: Tool added via include
+    command: ls
+    args:
+      - name: all
+        description: Show all files
+        required: false
+        type: boolean
+        cli_flag: "-a"
