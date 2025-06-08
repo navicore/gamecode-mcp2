@@ -1,0 +1,86 @@
+# Example restricted tools configuration for Slack bot
+# This provides safe, read-only operations perfect for a shared bot
+
+tools:
+  # File reading (no writing)
+  - name: read_file
+    description: Read contents of a file
+    command: /bin/cat
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: file
+        description: File to read (relative path only)
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  # Directory listing
+  - name: list_files
+    description: List files in current directory
+    command: /bin/ls
+    static_flags:
+      - "-la"
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+    args:
+      - name: path
+        description: Directory to list
+        required: false
+        type: string
+        cli_flag: null
+        is_path: true
+        default: "."
+
+  # Safe diagram creation (source only)
+  - name: save_diagram
+    description: Save a diagram source file
+    command: internal
+    internal_handler: write_file
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: path
+        description: Output filename (saved to ./diagrams/)
+        required: true
+        type: string
+        is_path: true
+      - name: content
+        description: Diagram source (PlantUML or Mermaid)
+        required: true
+        type: string
+
+  # Pattern search
+  - name: search_content
+    description: Search for patterns in files
+    command: /usr/bin/grep
+    static_flags:
+      - "-n"  # Show line numbers
+      - "-H"  # Show filenames
+    validation:
+      validate_args: true
+    args:
+      - name: pattern
+        description: Pattern to search for
+        required: true
+        type: string
+        cli_flag: null
+      - name: path
+        description: Path to search in
+        required: false
+        type: string
+        cli_flag: null
+        default: "."
+
+# This configuration provides:
+# - Read-only file access
+# - Safe diagram creation in designated directory  
+# - No system modification capabilities
+# - No network access
+# - No arbitrary command execution

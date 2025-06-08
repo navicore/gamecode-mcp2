@@ -2,3 +2,6 @@
 
 # User configuration - only tools.yaml.example is tracked
 tools.yaml
+.env
+*.log
+*audit.jsonl
