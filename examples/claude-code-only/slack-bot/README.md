@@ -308,6 +308,14 @@ unset ANTHROPIC_API_KEY
 2. Check channel/user restrictions
 3. Ensure bot is in the channel
 
+### Known Issues
+
+#### Ctrl+C doesn't stop the bot
+The Slack SDK's Socket Mode client may not respond to Ctrl+C properly. Workarounds:
+- Use `kill -9 <PID>` to force stop
+- Run in Docker and use `docker stop`
+- Close the terminal window
+
 ## Security Considerations
 
 1. **Never expose write tools to untrusted users**

@@ -17,8 +17,6 @@ import os
 import subprocess
 import json
 import logging
-import signal
-import sys
 from datetime import datetime
 from typing import Optional, List, Dict
 from slack_sdk import WebClient
@@ -103,15 +101,15 @@ class ClaudeSlackBot:
 
         # Connect to Slack
         self.socket_client.connect()
+        logger.info("Bot is running. Press Ctrl+C to stop.")
 
-        # Keep the program running with signal handling
+        # Keep the program running
         try:
             from threading import Event
             Event().wait()
-        except KeyboardInterrupt:
-            logger.info("Shutting down gracefully...")
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("Shutting down...")
             self.socket_client.close()
-            sys.exit(0)
 
     def process_socket_mode_request(self, client: SocketModeClient, req: SocketModeRequest):
         """Process Socket Mode requests from Slack."""
@@ -262,22 +260,12 @@ class ClaudeSlackBot:
             # -i = interactive (loads aliases)
             # -l = login shell (loads full environment)
             zsh_cmd = shlex.join(cmd)
-            # Ensure we pass through critical environment variables
-            env = os.environ.copy()
-            # Make sure HOME is set correctly
-            env['HOME'] = os.path.expanduser('~')
-            # Pass USER for any user-specific configs
-            if 'USER' not in env:
-                env['USER'] = os.environ.get('USER', '')
             
             result = subprocess.run(
                 ["zsh", "-i", "-l", "-c", zsh_cmd],
                 capture_output=True,
                 text=True,
-                timeout=TIMEOUT_SECONDS,
-                env=env,  # Pass the environment explicitly
-                # Ensure subprocess gets signals properly
-                preexec_fn=os.setsid if sys.platform != 'win32' else None
+                timeout=TIMEOUT_SECONDS
             )
 
             if result.returncode == 0:
@@ -363,18 +351,8 @@ class ClaudeSlackBot:
             f.write(json.dumps(audit_entry) + "\n")
 
 
-def signal_handler(signum, frame):
-    """Handle shutdown signals."""
-    logger.info(f"Received signal {signum}, shutting down...")
-    # Use os._exit for immediate termination
-    os._exit(0)
-
-
 def main():
     """Main entry point."""
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
     
     # Validate environment
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
