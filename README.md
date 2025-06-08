@@ -1,3 +1,6 @@
+[![Dependabot Updates](https://github.com/navicore/gamecode-mcp2/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/navicore/gamecode-mcp2/actions/workflows/dependabot/dependabot-updates)
+[![Rust CI](https://github.com/navicore/gamecode-mcp2/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/navicore/gamecode-mcp2/actions/workflows/rust-ci.yml)
+
 # GameCode MCP2
 
 A clean (and possibly naive) implementation of the Model Context Protocol (MCP)
