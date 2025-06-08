@@ -1,0 +1,68 @@
+# Example of tools with validation enabled
+# This shows how to add input validation to prevent injection attacks
+
+tools:
+  - name: safe_file_reader
+    description: Read files with path validation
+    command: cat
+    # Enable validation for this tool
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false  # Only relative paths
+      validate_args: true
+    args:
+      - name: file
+        description: File to read (relative path only)
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true  # This argument is a file path
+
+  - name: safe_grep
+    description: Search with validated patterns
+    command: grep
+    validation:
+      validate_args: true  # Warn on suspicious patterns
+    args:
+      - name: pattern
+        description: Search pattern
+        required: true
+        type: string
+        cli_flag: null
+      - name: file
+        description: File to search
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  - name: restricted_writer
+    description: Write files with strict path control
+    command: internal
+    internal_handler: write_file
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: path
+        description: Output file path (relative only)
+        required: true
+        type: string
+        is_path: true
+      - name: content
+        description: Content to write
+        required: true
+        type: string
+
+  # Example without validation for comparison
+  - name: unrestricted_echo
+    description: Echo without validation (original behavior)
+    command: echo
+    # validation defaults to all false
+    args:
+      - name: message
+        description: Message to echo
+        required: true
+        type: string
+        cli_flag: null

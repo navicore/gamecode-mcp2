@@ -58,6 +58,25 @@ It does NOT provide:
 
 Please report security concerns to the repository maintainers. Given the experimental nature of MCP, security issues are expected.
 
+## Input Validation (Optional)
+
+Version 0.5+ includes optional input validation to mitigate LLM injection attacks:
+
+### Available Validations
+- **Path traversal prevention** - Reject `..` and absolute paths
+- **Null byte detection** - Prevent filesystem termination attacks  
+- **Suspicious pattern logging** - Warn on shell metacharacters
+- **Type validation** - Ensure arguments match expected types
+
+### Philosophy
+Like 1990s CGI scripts, LLM tools face injection risks. Our approach:
+1. **No shell interpretation** - Already safe from command injection
+2. **Optional validation** - You choose what to validate
+3. **Transparent logging** - See what the LLM attempts
+4. **Configuration-driven** - Control validation in YAML
+
+See `examples/tools/secured.yaml` for validation examples.
+
 ## Future Considerations
 
 As MCP matures, consider:

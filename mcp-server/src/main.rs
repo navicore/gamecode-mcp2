@@ -9,6 +9,7 @@ use tracing::{debug, error, info, warn};
 mod handlers;
 mod protocol;
 mod tools;
+mod validation;
 
 use handlers::RequestHandler;
 use protocol::*;

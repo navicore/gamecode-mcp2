@@ -1,0 +1,76 @@
+# Ultra-paranoid tool configuration
+# For when you assume the LLM is actively hostile
+
+tools:
+  # File operations restricted to explicit directories
+  - name: sandbox_reader
+    description: Read files from sandbox directory only
+    command: /usr/bin/cat  # Full path to prevent PATH manipulation
+    validation:
+      validate_paths: true
+      allow_absolute_paths: false
+      validate_args: true
+    args:
+      - name: file
+        description: File in ./sandbox/ directory
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+    # Future: add sandbox_dir constraint
+
+  # Use timeout to prevent DoS
+  - name: time_limited_search
+    description: Search with strict timeout
+    command: /usr/bin/timeout
+    static_flags:
+      - "5"  # 5 second timeout
+      - "/usr/bin/grep"
+    validation:
+      validate_args: true
+    args:
+      - name: pattern
+        description: Search pattern (max 100 chars)
+        required: true
+        type: string
+        cli_flag: null
+      - name: file
+        description: File to search
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  # Extremely limited command set
+  - name: word_count
+    description: Count words in file (no options)
+    command: /usr/bin/wc
+    static_flags:
+      - "-w"  # Only word count, no other options
+    args:
+      - name: file
+        description: File to count
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  # Internal handler with strict limits
+  - name: safe_echo
+    description: Echo with length limit
+    command: internal
+    internal_handler: limited_echo  # Would need implementation
+    args:
+      - name: message
+        description: Message (max 1000 chars)
+        required: true
+        type: string
+        max_length: 1000  # Future feature
+
+# Principles:
+# 1. Use full paths to binaries
+# 2. Minimal argument flexibility
+# 3. Built-in timeouts
+# 4. Strict input length limits
+# 5. No shell features whatsoever
+# 6. Sandbox to specific directories
