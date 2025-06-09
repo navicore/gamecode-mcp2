@@ -73,6 +73,12 @@ impl ToolManager {
             tools: HashMap::new(),
         }
     }
+    
+    #[cfg(test)]
+    pub fn new_for_testing() -> Self {
+        // For tests, just create empty manager that tests can load explicitly
+        Self::new()
+    }
 
     // Explicit tool loading - admin controls what tools are available
     pub async fn load_from_file(&mut self, path: &Path) -> Result<()> {
@@ -193,8 +199,49 @@ impl ToolManager {
         }
     }
 
-    pub async fn detect_and_load_mode(&mut self) -> Result<()> {
-        // Auto-detect project type and load appropriate tools
+    pub async fn load_with_precedence(&mut self, cli_override: Option<String>) -> Result<()> {
+        // Clear precedence order:
+        // 1. Command-line flag (--tools-file)
+        if let Some(tools_file) = cli_override {
+            info!("Loading tools from command-line override: {}", tools_file);
+            return self.load_from_file(Path::new(&tools_file)).await;
+        }
+        
+        // 2. Environment variable
+        if let Ok(tools_file) = std::env::var("GAMECODE_TOOLS_FILE") {
+            info!("Loading tools from GAMECODE_TOOLS_FILE: {}", tools_file);
+            return self.load_from_file(Path::new(&tools_file)).await;
+        }
+        
+        // 3. Local tools.yaml in current directory
+        let local_tools = PathBuf::from("./tools.yaml");
+        if local_tools.exists() {
+            info!("Loading tools from local tools.yaml");
+            return self.load_from_file(&local_tools).await;
+        }
+        
+        // 4. Auto-detection (only if no local tools.yaml)
+        if let Ok(mode) = self.detect_project_type() {
+            info!("Auto-detected {} project", mode);
+            if let Ok(_) = self.load_auto_detected_tools(&mode).await {
+                return Ok(());
+            }
+        }
+        
+        // 5. Config directory fallback
+        if let Some(home) = directories::UserDirs::new() {
+            let config_tools = home.home_dir()
+                .join(".config/gamecode-mcp/tools.yaml");
+            if config_tools.exists() {
+                info!("Loading tools from config directory");
+                return self.load_from_file(&config_tools).await;
+            }
+        }
+        
+        Err(anyhow::anyhow!("No tools configuration found. Create tools.yaml or use --tools-file"))
+    }
+    
+    fn detect_project_type(&self) -> Result<String> {
         let detections = vec![
             ("Cargo.toml", "rust"),
             ("package.json", "javascript"),
@@ -204,33 +251,34 @@ impl ToolManager {
             ("build.gradle", "java"),
             ("Gemfile", "ruby"),
         ];
-
+        
         for (file, mode) in detections {
             if PathBuf::from(file).exists() {
-                info!("Detected {} project, loading {} tools", mode, mode);
-
-                // Try to load language-specific tools
-                let lang_file = format!("tools/languages/{}.yaml", mode);
-                if PathBuf::from(&lang_file).exists() {
-                    self.load_from_file(Path::new(&lang_file)).await?;
-                }
-
-                // Always load core tools as well
-                if PathBuf::from("tools/core.yaml").exists() {
-                    self.load_from_file(Path::new("tools/core.yaml")).await?;
-                }
-
-                // Load git tools if .git exists
-                if PathBuf::from(".git").exists() && PathBuf::from("tools/git.yaml").exists() {
-                    self.load_from_file(Path::new("tools/git.yaml")).await?;
-                }
-
-                return Ok(());
+                return Ok(mode.to_string());
             }
         }
-
-        // Default: just load from default locations
-        self.load_from_default_locations().await
+        
+        Err(anyhow::anyhow!("No project type detected"))
+    }
+    
+    async fn load_auto_detected_tools(&mut self, mode: &str) -> Result<()> {
+        // Try to load language-specific tools
+        let lang_file = format!("tools/languages/{}.yaml", mode);
+        if PathBuf::from(&lang_file).exists() {
+            self.load_from_file(Path::new(&lang_file)).await?;
+        }
+        
+        // Always load core tools as well
+        if PathBuf::from("tools/core.yaml").exists() {
+            self.load_from_file(Path::new("tools/core.yaml")).await?;
+        }
+        
+        // Load git tools if .git exists
+        if PathBuf::from(".git").exists() && PathBuf::from("tools/git.yaml").exists() {
+            self.load_from_file(Path::new("tools/git.yaml")).await?;
+        }
+        
+        Ok(())
     }
 
     // Convert to MCP schema - LLM sees exactly this, nothing hidden

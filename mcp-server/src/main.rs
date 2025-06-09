@@ -19,8 +19,11 @@ use tools::ToolManager;
 async fn main() -> Result<()> {
     // Handle command-line arguments
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        match args[1].as_str() {
+    let mut tools_file_override: Option<String> = None;
+    
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
             "--help" | "-h" => {
                 print_help();
                 return Ok(());
@@ -29,8 +32,17 @@ async fn main() -> Result<()> {
                 println!("gamecode-mcp2 {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
+            "--tools-file" | "-t" => {
+                if i + 1 < args.len() {
+                    tools_file_override = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("Error: --tools-file requires an argument");
+                    std::process::exit(1);
+                }
+            }
             _ => {
-                eprintln!("Unknown argument: {}", args[1]);
+                eprintln!("Unknown argument: {}", args[i]);
                 eprintln!("Try 'gamecode-mcp2 --help' for more information.");
                 std::process::exit(1);
             }
@@ -48,30 +60,13 @@ async fn main() -> Result<()> {
 
     info!("Starting GameCode MCP Server v2...");
 
-    // Tool loading is explicit - no implicit tool discovery
+    // Tool loading with clear precedence
     let mut tool_manager = ToolManager::new();
-
-    // Check for mode override
-    if let Ok(mode) = std::env::var("GAMECODE_MODE") {
-        info!("Loading tools for mode: {}", mode);
-        if let Err(e) = tool_manager.load_mode(&mode).await {
-            warn!("Failed to load mode {}: {}", mode, e);
-            warn!("Falling back to auto-detection");
-            if let Err(e) = tool_manager.detect_and_load_mode().await {
-                warn!("Failed to auto-detect mode: {}", e);
-                warn!("The server will start but no tools will be available.");
-            }
-        }
-    } else {
-        // Try auto-detection first
-        if let Err(e) = tool_manager.detect_and_load_mode().await {
-            warn!("Failed to auto-detect mode: {}", e);
-            // Fall back to default locations
-            if let Err(e) = tool_manager.load_from_default_locations().await {
-                warn!("Failed to load tools: {}", e);
-                warn!("The server will start but no tools will be available.");
-            }
-        }
+    
+    // Load tools with new precedence order
+    if let Err(e) = tool_manager.load_with_precedence(tools_file_override).await {
+        warn!("Failed to load tools: {}", e);
+        warn!("The server will start but no tools will be available.");
     }
 
     let handler = RequestHandler::new(tool_manager);
@@ -183,8 +178,9 @@ fn print_help() {
     println!("    gamecode-mcp2 [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    -h, --help       Print help information");
-    println!("    -V, --version    Print version information");
+    println!("    -h, --help               Print help information");
+    println!("    -V, --version            Print version information");
+    println!("    -t, --tools-file <FILE>  Specify tools configuration file");
     println!();
     println!("DESCRIPTION:");
     println!("    An MCP server that communicates via stdio (stdin/stdout).");

@@ -1,0 +1,6 @@
+# Slack Bot Requirements
+slack-sdk>=3.26.0
+python-dotenv>=1.0.0
+
+# Optional: for better logging
+colorlog>=6.7.0
