@@ -103,16 +103,37 @@ class ClaudeSlackBot:
         # Connect to Slack
         self.socket_client.connect()
         logger.info("Bot is running. Press Ctrl+C to stop.")
-        logger.info("Note: If Ctrl+C doesn't work, use Ctrl+\\ or kill the process")
 
     def stop(self):
         """Stop the bot gracefully."""
         logger.info("Stopping bot...")
         try:
+            # First shut down the interval runners to stop reconnection attempts
+            if hasattr(self.socket_client, 'message_processor') and self.socket_client.message_processor:
+                logger.debug("Shutting down message_processor")
+                self.socket_client.message_processor.shutdown()
+                
+            if hasattr(self.socket_client, 'current_app_monitor') and self.socket_client.current_app_monitor:
+                logger.debug("Shutting down current_app_monitor")
+                self.socket_client.current_app_monitor.shutdown()
+                
+            if hasattr(self.socket_client, 'current_session_runner') and self.socket_client.current_session_runner:
+                logger.debug("Shutting down current_session_runner")
+                self.socket_client.current_session_runner.shutdown()
+            
+            # Disable auto-reconnect before disconnecting
+            if hasattr(self.socket_client, 'auto_reconnect_enabled'):
+                self.socket_client.auto_reconnect_enabled = False
+                
+            # Mark as closed to prevent any new operations
+            if hasattr(self.socket_client, 'closed'):
+                self.socket_client.closed = True
+                
+            # Now try to disconnect and close
             self.socket_client.disconnect()
             self.socket_client.close()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Error during shutdown: {e}")
 
     def process_socket_mode_request(self, client: SocketModeClient, req: SocketModeRequest):
         """Process Socket Mode requests from Slack."""
@@ -386,33 +407,40 @@ def main():
     # Create bot instance
     bot = ClaudeSlackBot()
     
-    # Set up AGGRESSIVE signal handlers that force immediate exit
+    # Set up interruptible wait with signal handling
     import signal
+    import threading
+    import time
     
-    def force_exit_handler(signum, frame):
-        print("\n[FORCE EXIT] Ctrl+C detected, terminating immediately...")
-        os._exit(0)
+    stop_event = threading.Event()
     
-    # Override default signal handlers with immediate exit
-    signal.signal(signal.SIGINT, force_exit_handler)
-    signal.signal(signal.SIGTERM, force_exit_handler)
+    def signal_handler(signum, frame):
+        logger.info("\n[Shutting down] Ctrl+C received...")
+        stop_event.set()
+        # Stop the bot immediately (not in a thread)
+        try:
+            bot.stop()
+        except:
+            pass
+        # Force exit after brief delay
+        threading.Timer(0.5, lambda: os._exit(0)).start()
     
-    # Also catch SIGQUIT (Ctrl+\) as a backup
-    signal.signal(signal.SIGQUIT, force_exit_handler)
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     try:
         # Start the bot
         bot.start()
         
-        # Keep the main thread alive
-        import time
-        while True:
-            time.sleep(0.1)  # Shorter sleep for more responsive shutdown
+        # Use interruptible wait instead of infinite sleep
+        while not stop_event.is_set():
+            stop_event.wait(0.1)  # Check every 100ms
             
     except Exception as e:
         logger.error(f"Bot crashed: {e}", exc_info=True)
     finally:
-        # This likely won't be reached due to os._exit
+        bot.stop()
         logger.info("Cleanup complete")
 
 
