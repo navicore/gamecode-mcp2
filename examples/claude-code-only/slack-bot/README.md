@@ -1,27 +1,42 @@
 # Claude Code Slack Bot with MCP Tools
 
-A Slack bot that provides controlled access to Claude Code with restricted MCP tools.
+A Slack bot that provides controlled access to Claude Code with sandboxed MCP tool execution.
 
 ## Overview
 
-This bot demonstrates how to:
-1. Expose Claude to Slack users safely
-2. Restrict which MCP tools Claude can use
-3. Audit all interactions
-4. Handle timeouts and errors gracefully
+This bot enables teams to safely interact with Claude through Slack while maintaining security through:
+- Tool restrictions - only explicitly allowed MCP tools are available
+- File sandboxing - each request runs in an isolated temporary directory
+- Automatic cleanup - temporary files are removed after 5 minutes
+- Full audit trail - all requests are logged
+- Smart file handling - created files are automatically uploaded to Slack
 
 ## Architecture
 
 ```
-Slack User → Slack Bot → Claude Code CLI → GameCode MCP2 Server → Restricted Tools
+Slack User → Slack Bot (Socket Mode) → Claude CLI → MCP Server → Sandboxed Tools
+     ↓                                                                    ↓
+  Slack App                                                      /tmp/slackbot_sandbox/
 ```
 
-### File Operations Sandboxing
-- Each request gets an isolated directory: `/tmp/slackbot_sandbox/<timestamp>_<user_id>/`
-- MCP configuration is generated dynamically with absolute paths
-- Tools are loaded from `slack-bot-tools.yaml` 
-- Files created are automatically uploaded to Slack
-- Sandbox is cleaned up after 5 minutes
+### Key Components
+
+1. **Slack Bot** (`slack_claude_bot.py`)
+   - Uses Socket Mode for real-time messaging without webhooks
+   - Handles mentions, DMs, and slash commands
+   - Manages sandboxed execution environments
+   - Automatically uploads created files to Slack
+
+2. **MCP Tools** (`slack-bot-tools.yaml`)
+   - Defines available tools with security restrictions
+   - All file operations are relative to sandbox directory
+   - No parent directory access allowed
+
+3. **Security Features**
+   - Per-request isolated directories
+   - Tool allowlist enforcement
+   - Request size limits
+   - Optional user/channel restrictions
 
 ## Setup
 
@@ -32,345 +47,237 @@ Slack User → Slack Bot → Claude Code CLI → GameCode MCP2 Server → Restri
 3. Enable Socket Mode (Settings → Socket Mode)
 4. Generate App-Level Token with `connections:write` scope
 5. Add Bot Token Scopes:
-   - `app_mentions:read`
-   - `chat:write`
-   - `im:history`
-   - `im:read`
-   - `im:write`
-   - `files:write` (for file uploads)
+   - `app_mentions:read` - respond to @mentions
+   - `chat:write` - send messages
+   - `im:history` - read DM history
+   - `im:read` - receive DMs
+   - `im:write` - send DMs
+   - `files:write` - upload files
 6. Install app to workspace
-7. Save tokens for `.env`
+7. Copy both tokens for `.env`
 
-### 2. Configure Bot
+### 2. Install Dependencies
 
 ```bash
-# Install dependencies
-pip install slack-sdk python-dotenv
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
+# Install requirements
+pip install slack-sdk python-dotenv
+```
+
+### 3. Configure Environment
+
+```bash
 # Copy environment template
 cp .env.example .env
 
-# Edit .env with your tokens
-
-# Set up MCP sandbox (one-time setup)
-./setup_sandbox.sh
+# Edit .env with your tokens:
+# - SLACK_APP_TOKEN (starts with xapp-)
+# - SLACK_BOT_TOKEN (starts with xoxb-)
+# - Adjust CLAUDE_ALLOWED_TOOLS as needed
 ```
 
-### 3. Configure MCP Tools
-
-Create a restricted tools configuration:
-
-```yaml
-# restricted-tools.yaml
-tools:
-  # Only safe read operations
-  - name: read_file
-    description: Read a file
-    command: cat
-    validation:
-      validate_paths: true
-      allow_absolute_paths: false
-    args:
-      - name: path
-        type: string
-        required: true
-        is_path: true
-        
-  # Limited diagram creation  
-  - name: create_diagram
-    description: Create a diagram
-    command: internal
-    internal_handler: write_file
-    validation:
-      validate_paths: true
-      allow_absolute_paths: false
-    args:
-      - name: path
-        type: string
-        required: true
-        is_path: true
-      - name: content
-        type: string
-        required: true
-```
-
-### 4. Run Bot
+### 4. Verify MCP Server
 
 ```bash
-# Set environment variable for tools
-export GAMECODE_TOOLS_FILE=./restricted-tools.yaml
+# Ensure gamecode-mcp2 is installed
+which gamecode-mcp2
 
-# Run the bot
+# Test MCP tools
+gamecode-mcp2 --tools-file slack-bot-tools.yaml --list-tools
+```
+
+### 5. Run the Bot
+
+```bash
 python slack_claude_bot.py
 ```
 
 ## Usage
 
-### Direct Message
+### Direct Messages
 ```
-User: Create a class diagram for a user authentication system
-Bot: [Claude creates PlantUML diagram using allowed tools]
-```
-
-### Channel Mention
-```
-User: @ClaudeBot explain the files in this directory
-Bot: [Claude uses read_file tool to examine and explain files]
+User: Create a CSV report of system processes
+Bot: [Creates CSV file and uploads to Slack]
 ```
 
-### Slash Command
+### Channel Mentions
 ```
-/claude analyze the README.md file
-```
-
-## Security Features
-
-### 1. Tool Restrictions
-- Only tools specified in `CLAUDE_ALLOWED_TOOLS` are available
-- Format: `mcp__<server>__<tool>` with comma separation
-- Example: `mcp__gamecode__read_file,mcp__gamecode__list_files`
-- No wildcards allowed - must list each tool explicitly
-
-### 2. Access Control
-- Optional channel restrictions via `ALLOWED_CHANNELS`
-- Optional user restrictions via `ALLOWED_USERS`
-- Empty = no restrictions
-
-### 3. Safety Limits
-- Maximum prompt length (default: 1000 chars)
-- Execution timeout (default: 30 seconds)
-- Non-interactive mode enforced
-
-### 4. Audit Logging
-All requests logged to `claude_audit.jsonl`:
-```json
-{
-  "timestamp": "2024-01-10T10:30:00Z",
-  "user": "U123456",
-  "channel": "C789012",
-  "prompt": "Create a diagram...",
-  "allowed_tools": "mcp__gamecode__read_file,mcp__gamecode__list_files"
-}
+User: @ClaudeBot analyze this data and create a chart
+Bot: [Generates visualization and uploads as image]
 ```
 
-## Advanced Configuration
+### Slash Commands (if configured)
+```
+/claude summarize the latest metrics in JSON format
+```
 
-### Tool-Specific Bots
+## Tool Configuration
 
-Create specialized bots by changing `CLAUDE_ALLOWED_TOOLS`:
+### Available Tools
 
+The bot uses `slack-bot-tools.yaml` which provides:
+- `read_file` - Read files in the sandbox
+- `write_file` - Create text files
+- `create_csv` - Create CSV files with validation
+- `create_json` - Create JSON files with validation
+- `save_diagram` - Save SVG/PNG diagrams
+- `list_files` - List directory contents
+- `search_files` - Find files by pattern
+- `grep` - Search file contents
+
+### Tool Security
+
+All tools enforce:
+- Relative paths only (no absolute paths)
+- No parent directory access (`..` blocked)
+- Operations confined to sandbox directory
+- File size limits (10MB default)
+
+### Customizing Tools
+
+To modify available tools, edit `CLAUDE_ALLOWED_TOOLS` in `.env`:
 ```bash
-# Diagram-only bot
-CLAUDE_ALLOWED_TOOLS=mcp__gamecode__create_diagram,mcp__gamecode__save_plantuml
+# Example: Only allow read operations
+CLAUDE_ALLOWED_TOOLS="mcp__gamecode__read_file,mcp__gamecode__list_files"
 
-# Read-only analysis bot
-CLAUDE_ALLOWED_TOOLS=mcp__gamecode__read_file,mcp__gamecode__list_files,mcp__gamecode__grep
-
-# Documentation bot
-CLAUDE_ALLOWED_TOOLS=mcp__gamecode__create_diagram,mcp__gamecode__write_markdown
-```
-
-### Multiple Bots
-
-Run multiple bots with different configurations:
-
-```python
-# diagram_bot.py
-ALLOWED_TOOLS = "mcp__gamecode__save_plantuml,mcp__gamecode__save_mermaid"
-
-# code_review_bot.py  
-ALLOWED_TOOLS = "mcp__gamecode__read_file,mcp__gamecode__list_files"
-
-# doc_bot.py
-ALLOWED_TOOLS = "mcp__gamecode__write_markdown,mcp__gamecode__create_diagram"
-```
-
-## Error Handling
-
-The bot handles:
-- Claude timeouts → User-friendly timeout message
-- Tool errors → Error details in response
-- Missing permissions → Authorization error
-- Invalid prompts → Validation message
-
-## Monitoring
-
-Monitor bot health via:
-- `claude_bot.log` - Application logs
-- `claude_audit.jsonl` - Request audit trail
-- Slack's app monitoring dashboard
-
-## Extending
-
-To add custom behavior:
-
-1. **Pre-processing**: Modify prompts before sending to Claude
-2. **Post-processing**: Format Claude's output
-3. **Custom commands**: Add slash commands for specific workflows
-4. **Webhooks**: Integrate with external systems
-
-## Example Workflows
-
-### Code Documentation Bot
-```yaml
-# tools.yaml
-include:
-  - examples/diagrams/plantuml/source-only.yaml
-  - examples/documentation/markdown/basic.yaml
-
-# Bot responds to: "@bot document the auth module"
-```
-
-### Security Audit Bot
-```yaml
-# tools.yaml  
-include:
-  - examples/security/scanning/basic.yaml
-  - examples/core/readonly.yaml
-
-# Bot responds to: "@bot audit this directory for security issues"
-```
-
-## Production Deployment
-
-### Docker/Kubernetes
-
-The bot is designed to work seamlessly in containerized environments.
-
-**Note on Authentication**:
-- **Development**: Uses Claude Desktop with inherited shell environment
-- **Production**: Typically uses AWS Bedrock or Vertex AI with proper IAM/service account auth
-
-For production with Bedrock:
-
-1. **Environment Variables**: In production, environment variables from K8s ConfigMaps/Secrets take precedence over `.env` files
-2. **No .env in Production**: The Docker image doesn't include `.env` files
-3. **Configuration**: All config comes from K8s manifests
-
-#### Quick Deploy to K8s
-
-```bash
-# Build and push image
-docker build -t your-registry/claude-slack-bot:latest .
-docker push your-registry/claude-slack-bot:latest
-
-# Deploy to Kubernetes
-kubectl apply -f k8s-deployment.yaml
-
-# Check logs
-kubectl logs -l app=claude-slack-bot
-```
-
-#### Environment Variable Priority
-
-1. **K8s/Docker Environment**: Takes precedence
-2. **.env file**: Only used if env var not set (local dev)
-3. **Default values**: Used if neither is set
-
-This is handled automatically by `python-dotenv` with `override=False`.
-
-#### Production with AWS Bedrock
-
-In production, you'd typically:
-1. Use a different `CLAUDE_COMMAND` that wraps Bedrock API calls
-2. Configure AWS credentials via K8s secrets/IAM roles
-3. No need for Claude Desktop authentication
-
-Example K8s secret for Bedrock:
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: bedrock-credentials
-data:
-  AWS_ACCESS_KEY_ID: <base64>
-  AWS_SECRET_ACCESS_KEY: <base64>
-  AWS_REGION: <base64>
+# Example: Full file operations
+CLAUDE_ALLOWED_TOOLS="mcp__gamecode__write_file,mcp__gamecode__read_file,mcp__gamecode__create_csv,mcp__gamecode__create_json"
 ```
 
 ## File Handling
 
-The bot intelligently handles file creation and uploads:
-
-### Secure File Creation
-- Each request gets its own subdirectory: `/tmp/slackbot_sandbox/<request-id>/`
-- Bot copies `mcp-config.json` to the sandbox directory
-- Bot changes to that directory before running Claude
-- Claude uses `--mcp-config` to load local MCP configuration
-- All file operations are naturally sandboxed to that directory
-- No global MCP configuration needed - each request is isolated
-- Directories are automatically cleaned up after 5 minutes
-
 ### Automatic File Detection
-The bot detects created files through:
-1. **Directory monitoring** - Any new files in the working directory
-2. **Response parsing** - Extracts filenames mentioned like `created 'data.csv'`
-3. **Smart formatting** - Shows CSV as tables, JSON with syntax highlighting
 
-### Supported File Types
-- **Data**: CSV, JSON, YAML (previewed and uploaded)
-- **Images**: PNG, JPG, SVG (uploaded directly)
-- **Text**: TXT, MD (shown as formatted text)
-- **Other**: Any file type can be uploaded
+The bot automatically detects and uploads files that Claude creates:
+- CSV files are previewed as formatted tables
+- JSON files are syntax highlighted
+- Images are uploaded directly
+- Large files are uploaded without preview
 
-### Example Usage
-```
-@bot create a CSV file with system metrics
-@bot generate a pie chart of memory usage as PNG
-@bot save the configuration as JSON
-```
+### Sandbox Lifecycle
+
+1. Request received → new directory created
+2. Claude executes in sandbox directory
+3. Created files are detected and uploaded
+4. Directory cleaned up after 5 minutes
+
+## Security
+
+### Request Validation
+- Maximum prompt length enforced (default: 1000 chars)
+- Execution timeout (default: 30 seconds)
+- Optional user/channel allowlists
+
+### Audit Trail
+- All requests logged to `claude_audit.jsonl`
+- Includes timestamp, user, channel, prompt, and allowed tools
+- Application logs in `claude_bot.log`
+
+### Environment Isolation
+- Each request runs in unique directory
+- No access to parent directories
+- Temporary files automatically cleaned up
 
 ## Troubleshooting
 
-### Bot not responding
-1. Check Socket Mode is enabled
-2. Verify tokens in `.env`
-3. Check `claude_bot.log`
+### Bot Not Responding
 
-### File upload errors
-If you see "missing_scope" errors:
-1. Add `files:write` permission to your Slack app
-2. Reinstall the app to your workspace
-3. The bot will show file content even if upload fails
+1. Check Socket Mode is enabled in Slack app settings
+2. Verify tokens in `.env` are correct
+3. Check `claude_bot.log` for errors
+4. Ensure bot is invited to channels/DMs
 
-### Claude errors
+### Files Not Created
 
-#### "Credit balance is too low" error
-If you have a MAX account and get this error:
-1. Check if you have an old `ANTHROPIC_API_KEY` set in your environment
-2. Remove/unset any `ANTHROPIC_API_KEY` - MAX accounts use Desktop auth, not API keys
-3. Having both MAX account and an API key causes authentication conflicts
+1. Verify MCP server is installed: `which gamecode-mcp2`
+2. Check tool configuration in `slack-bot-tools.yaml`
+3. Ensure `CLAUDE_ALLOWED_TOOLS` includes write tools
+4. Check sandbox directory permissions
 
-To fix:
+### Ctrl+C Not Working
+
+The Slack SDK has known issues with signal handling. Use the provided kill script:
 ```bash
-unset ANTHROPIC_API_KEY
-# Remove from .env, .bashrc, .zshrc, etc.
+./kill_bot.sh
 ```
 
-#### Other Claude errors
-1. Verify `claude` command works locally
-2. Check allowed tools configuration
-3. Review timeout settings
+### File Upload Errors
 
-### Permission errors
-1. Verify bot has correct Slack scopes
-2. Check channel/user restrictions
-3. Ensure bot is in the channel
+If you see `method_deprecated` errors, ensure you're using the latest version of this bot which uses `files_upload_v2`.
 
-### Known Issues
+## Development
 
-#### Ctrl+C doesn't stop the bot
-The Slack SDK's Socket Mode client may not respond to Ctrl+C properly. Workarounds:
-- Use `kill -9 <PID>` to force stop
-- Run in Docker and use `docker stop`
-- Close the terminal window
+### Adding New Tools
 
-## Security Considerations
+1. Edit `slack-bot-tools.yaml` to add tool definition
+2. Add tool name to `CLAUDE_ALLOWED_TOOLS` in `.env`
+3. Restart bot
 
-1. **Never expose write tools to untrusted users**
-2. **Always use path validation for file operations**
-3. **Set appropriate timeouts to prevent DoS**
-4. **Regularly review audit logs**
-5. **Use channel/user restrictions in production**
+### Testing Tools
 
-This bot demonstrates safe LLM exposure patterns that can be adapted for other chat platforms or internal tools.
+Test tools directly with Claude:
+```bash
+# Create test directory
+mkdir test && cd test
+
+# Test with specific tool
+claude --allowedTools "mcp__gamecode__write_file" \
+  --mcp-config '{"mcpServers":{"gamecode":{"command":"gamecode-mcp2","args":["--tools-file","../slack-bot-tools.yaml"],"type":"stdio"}}}' \
+  -p "Create a test file"
+```
+
+### Debug Mode
+
+Enable debug logging in `.env`:
+```bash
+DEBUG=true
+```
+
+## Examples
+
+See the `examples/` directory for:
+- Alternative bot implementations
+- Different tool configurations
+- Integration patterns
+
+## Architecture Decisions
+
+### Why Socket Mode?
+- No public webhook URL required
+- Works behind firewalls
+- Real-time bidirectional communication
+- Simpler setup for internal tools
+
+### Why Sandbox Directories?
+- Prevents file conflicts between requests
+- Easy cleanup of temporary files
+- Clear audit trail per request
+- Natural security boundary
+
+### Why MCP?
+- Standardized tool interface
+- Language-agnostic tool definitions
+- Built-in validation and security
+- Extensible for future tools
+
+## Known Limitations
+
+1. **Signal Handling**: Ctrl+C doesn't cleanly stop the bot due to Slack SDK threading
+2. **File Size**: Slack limits file uploads (varies by plan)
+3. **Execution Time**: Long-running operations may timeout
+4. **Concurrency**: Each request is processed sequentially
+
+## Contributing
+
+When contributing:
+1. Test with various file types and sizes
+2. Ensure error messages are user-friendly
+3. Maintain security restrictions
+4. Update documentation for new features
+
+## License
+
+See the parent repository's LICENSE file.
