@@ -1,0 +1,198 @@
+# Slack Bot specific MCP tools configuration
+# All file operations are sandboxed to a temporary directory
+
+tools:
+  # Read operations - unrestricted within the working directory
+  - name: read_file
+    description: Read the contents of a file
+    command: cat
+    args:
+      - name: path
+        type: string
+        required: true
+        description: Path to the file to read
+    validation:
+      path:
+        allow_relative: true
+        allow_absolute: false  # Force relative paths only
+        
+  - name: list_files
+    description: List files in a directory
+    command: ls
+    args:
+      - name: path
+        type: string
+        required: false
+        default: "."
+        description: Directory to list
+      - name: options
+        type: string
+        required: false
+        default: "-la"
+        description: ls command options
+    validation:
+      path:
+        allow_relative: true
+        allow_absolute: false
+        
+  - name: search_files
+    description: Search for files by name pattern
+    command: find
+    args:
+      - name: path
+        type: string
+        required: false
+        default: "."
+        description: Directory to search in
+      - name: pattern
+        type: string
+        required: true
+        description: Name pattern to search for
+    validation:
+      path:
+        allow_relative: true
+        allow_absolute: false
+        
+  - name: grep
+    description: Search file contents
+    command: grep
+    args:
+      - name: pattern
+        type: string
+        required: true
+        description: Pattern to search for
+      - name: file
+        type: string
+        required: true
+        description: File to search in
+      - name: options
+        type: string
+        required: false
+        default: "-n"
+        description: grep options
+    validation:
+      file:
+        allow_relative: true
+        allow_absolute: false
+
+  # Write operations - only allowed in the working directory
+  - name: write_file
+    description: Write content to a file in the working directory
+    command: internal
+    internal_handler: write_file
+    args:
+      - name: path
+        description: Path to the file to write
+        required: true
+        type: string
+      - name: content
+        description: Content to write to the file
+        required: true
+        type: string
+    validation:
+      path:
+        # Force all writes to be relative paths only
+        allow_relative: true
+        allow_absolute: false
+        # Additional restriction: no directory traversal
+        deny_patterns:
+          - ".."
+          - "~"
+          
+  - name: create_csv
+    description: Create a CSV file in the working directory
+    command: internal
+    internal_handler: write_file
+    args:
+      - name: path
+        description: Path to the CSV file to create
+        required: true
+        type: string
+      - name: content
+        description: CSV content to write
+        required: true
+        type: string
+    validation:
+      path:
+        allow_relative: true
+        allow_absolute: false
+        deny_patterns:
+          - ".."
+          - "~"
+        # Force .csv extension
+        require_extension: ".csv"
+        
+  - name: create_json
+    description: Create a JSON file in the working directory
+    command: internal
+    internal_handler: write_file
+    args:
+      - name: path
+        description: Path to the JSON file to create
+        required: true
+        type: string
+      - name: content
+        description: JSON content to write
+        required: true
+        type: string
+    validation:
+      path:
+        allow_relative: true
+        allow_absolute: false
+        deny_patterns:
+          - ".."
+          - "~"
+        require_extension: ".json"
+        
+  - name: save_diagram
+    description: Save a diagram (SVG/PNG) in the working directory
+    command: internal
+    internal_handler: write_file
+    args:
+      - name: path
+        description: Path to save the diagram
+        required: true
+        type: string
+      - name: content
+        description: Diagram content (SVG/PNG data)
+        required: true
+        type: string
+    validation:
+      path:
+        allow_relative: true
+        allow_absolute: false
+        deny_patterns:
+          - ".."
+          - "~"
+        allowed_extensions:
+          - ".svg"
+          - ".png"
+          - ".jpg"
+          - ".jpeg"
+
+# Security settings
+security:
+  # Sandbox all operations to the working directory
+  working_directory_only: true
+  
+  # Deny any attempts to escape the working directory
+  deny_parent_directory_access: true
+  
+  # Maximum file size for write operations (10MB)
+  max_file_size: 10485760
+  
+  # Allowed file extensions for write operations
+  allowed_write_extensions:
+    - .txt
+    - .csv
+    - .json
+    - .yaml
+    - .yml
+    - .md
+    - .svg
+    - .png
+    - .jpg
+    - .jpeg
+
+# Note: The MCP server should be configured to run with a specific
+# working directory for each request, e.g., /tmp/slackbot/<request-id>/

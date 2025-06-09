@@ -233,30 +233,138 @@ class ClaudeSlackBot:
         self.log_audit(user, channel, prompt)
 
         # Send typing indicator
-        self.send_message(channel, "processing..._")
+        self.send_message(channel, "_processing..._")
 
+        # Create a clean working directory for this request within the sandbox
+        import tempfile
+        import time
+        import shutil
+        
+        # Use the configured sandbox base directory
+        sandbox_base = os.environ.get("MCP_SANDBOX_BASE", "/tmp/slackbot_sandbox")
+        
+        # Ensure sandbox base exists
+        os.makedirs(sandbox_base, exist_ok=True)
+        
+        request_id = f"{int(time.time() * 1000)}_{user[-4:]}"
+        working_dir = os.path.join(sandbox_base, request_id)
+        
+        # Clean up any old directories first
         try:
-            # Execute Claude with restrictions
-            result = self.execute_claude(prompt)
+            if os.path.exists(sandbox_base):
+                # Remove directories older than 1 hour
+                now = time.time()
+                for item in os.listdir(sandbox_base):
+                    item_path = os.path.join(sandbox_base, item)
+                    if os.path.isdir(item_path) and item != '.mcp':  # Don't delete MCP config
+                        try:
+                            age = now - os.path.getmtime(item_path)
+                            if age > 3600:
+                                shutil.rmtree(item_path)
+                                logger.debug(f"Cleaned up old directory: {item} (age: {age/60:.1f} minutes)")
+                        except:
+                            pass
+        except Exception as e:
+            logger.warning(f"Error during cleanup: {e}")
+        
+        # Create fresh working directory
+        os.makedirs(working_dir, exist_ok=True)
+        logger.info(f"Created working directory: {working_dir}")
 
-            # Send response
-            self.send_message(channel, result, code_block=True)
+        # Create MCP config dynamically with absolute paths
+        bot_dir = os.path.dirname(os.path.abspath(__file__))
+        tools_file_path = os.path.join(bot_dir, 'slack-bot-tools.yaml')
+        
+        mcp_config = {
+            "mcpServers": {
+                "gamecode": {
+                    "command": os.path.expanduser("~/.cargo/bin/gamecode-mcp2"),
+                    "args": ["--tools-file", tools_file_path],
+                    "type": "stdio"
+                }
+            }
+        }
+        
+        # Convert to JSON string for passing directly to claude
+        mcp_config_json = json.dumps(mcp_config)
+        logger.debug(f"MCP config JSON: {mcp_config_json}")
+        
+        # Save current directory
+        original_dir = os.getcwd()
+        
+        try:
+            # Change to working directory so all file operations happen there
+            os.chdir(working_dir)
+            logger.debug(f"Changed to working directory: {working_dir}")
+            
+            # Execute Claude with MCP config JSON
+            result = self.execute_claude(prompt, working_dir, mcp_config_json)
 
+            # Find all files created in the working directory
+            created_files = []
+            for item in os.listdir('.'):
+                if os.path.isfile(item):
+                    created_files.append(item)
+            
+            if created_files:
+                logger.info(f"Files created in working directory: {created_files}")
+                
+                # Send each file to Slack
+                for file_name in created_files:
+                    file_path = os.path.abspath(file_name)
+                    self.send_file_to_slack(channel, file_path, f"📎 Created: {file_name}")
+            
+            # Also check if the result mentions a file that we might have missed
+            mentioned_files = self.extract_filenames_from_text(result)
+            for file_name in mentioned_files:
+                if file_name not in created_files and os.path.exists(file_name):
+                    file_path = os.path.abspath(file_name)
+                    self.send_file_to_slack(channel, file_path, f"📎 Created: {file_name}")
+
+            # Send the text response
+            self.send_formatted_content(channel, result, prompt)
+            
         except subprocess.TimeoutExpired:
             self.send_message(
                 channel, "⏱️ Claude took too long to respond. Please try a simpler request.")
         except Exception as e:
             logger.error(f"Error executing Claude: {e}")
             self.send_message(channel, f"❌ Error: {str(e)}")
+        finally:
+            # Always return to original directory
+            os.chdir(original_dir)
+            
+            # Clean up working directory after a delay
+            import threading
+            def cleanup():
+                time.sleep(300)  # Keep for 5 minutes in case needed for debugging
+                try:
+                    if os.path.exists(working_dir):
+                        shutil.rmtree(working_dir)
+                        logger.debug(f"Cleaned up working directory: {working_dir}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up {working_dir}: {e}")
+            threading.Thread(target=cleanup, daemon=True).start()
 
-    def execute_claude(self, prompt: str) -> str:
+    def execute_claude(self, prompt: str, working_dir: str = None, mcp_config_json: str = None) -> str:
         """Execute Claude Code CLI with restrictions."""
         cmd = [
             CLAUDE_COMMAND,
             "--model", CLAUDE_MODEL,
             "--allowedTools", ALLOWED_TOOLS,
-            "-p", prompt
         ]
+        
+        # Add MCP config if provided
+        if mcp_config_json:
+            cmd.extend(["--mcp-config", mcp_config_json])
+            logger.debug(f"Using MCP config JSON")
+        
+        cmd.extend(["-p", prompt])
+        
+        # Add custom tools file if specified
+        tools_file = os.environ.get("SLACK_BOT_TOOLS_FILE", "slack-bot-tools.yaml")
+        if os.path.exists(tools_file):
+            cmd.extend(["--toolsFile", tools_file])
 
         # Log the command with proper quoting for debugging
         import shlex
@@ -296,7 +404,9 @@ class ClaudeSlackBot:
             )
 
             if result.returncode == 0:
-                return result.stdout.strip()
+                output = result.stdout.strip()
+                logger.debug(f"Claude output: {output[:200]}...")
+                return output
             else:
                 error_msg = result.stderr.strip()
                 stdout_msg = result.stdout.strip()
@@ -332,6 +442,335 @@ class ClaudeSlackBot:
             )
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
+    
+    def send_formatted_content(self, channel: str, content: str, prompt: str):
+        """Send content with appropriate formatting based on type detection."""
+        # First check if this is a file path to an image or data file
+        content_stripped = content.strip()
+        
+        # Check for file paths (absolute or relative)
+        # Only treat as file path if it's a short string that looks like a path
+        is_likely_path = (
+            content_stripped.startswith('/') or 
+            (len(content_stripped.split('\n')) == 1 and 
+             len(content_stripped) < 100 and  # File paths shouldn't be very long
+             ' ' not in content_stripped and  # File paths typically don't have spaces
+             '.' in content_stripped and 
+             any(ext in content_stripped.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.csv', '.json', '.yaml', '.yml']))
+        )
+        
+        if is_likely_path:
+            # This looks like a file path
+            file_path = content_stripped
+            
+            # If it's a relative path, make it absolute
+            if not file_path.startswith('/'):
+                file_path = os.path.abspath(file_path)
+            
+            # Check if file exists
+            if os.path.exists(file_path):
+                _, ext = os.path.splitext(file_path.lower())
+                
+                if ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg']:
+                    self.send_image_file(channel, file_path)
+                    return
+                elif ext in ['.csv', '.json', '.yaml', '.yml']:
+                    # Read and send the file content with appropriate formatting
+                    try:
+                        with open(file_path, 'r') as f:
+                            file_content = f.read()
+                        
+                        # Send a message about the file
+                        self.send_message(channel, f"📄 Created file: `{os.path.basename(file_path)}`")
+                        
+                        # Send the content formatted appropriately
+                        if ext == '.csv':
+                            self.send_csv_formatted(channel, file_content)
+                        elif ext == '.json':
+                            self.send_json_formatted(channel, file_content)
+                        elif ext in ['.yaml', '.yml']:
+                            self.send_yaml_formatted(channel, file_content)
+                        
+                        # Also offer to download
+                        self.send_as_file(channel, file_content, prompt)
+                        return
+                    except Exception as e:
+                        logger.error(f"Error reading file {file_path}: {e}")
+            else:
+                # File doesn't exist, but it looks like a file path
+                logger.warning(f"File not found: {file_path}")
+                # Continue with normal content processing
+        
+        # Try to detect what type of content we have
+        content_lower = content.lower()
+        prompt_lower = prompt.lower()
+        
+        # Check if user explicitly asked for a specific format
+        wants_json = any(word in prompt_lower for word in ['json', 'as json'])
+        wants_yaml = any(word in prompt_lower for word in ['yaml', 'yml', 'as yaml'])
+        wants_csv = any(word in prompt_lower for word in ['csv', 'comma separated', 'as csv'])
+        wants_file = any(word in prompt_lower for word in ['file', 'download', 'attachment'])
+        
+        # Auto-detect content type if not explicitly requested
+        is_json = False
+        is_yaml = False
+        is_csv = False
+        is_svg = False
+        is_markdown = False
+        
+        # Try to parse as JSON
+        if content.strip().startswith('{') or content.strip().startswith('['):
+            try:
+                json.loads(content)
+                is_json = True
+            except:
+                pass
+        
+        # Check for YAML indicators
+        if content.strip().startswith('---') or ': ' in content:
+            is_yaml = True
+        
+        # Check for CSV (has comma-separated values with consistent columns)
+        if ',' in content and '\n' in content:
+            lines = content.strip().split('\n')
+            if len(lines) > 1:
+                first_commas = lines[0].count(',')
+                if all(line.count(',') == first_commas for line in lines[1:5]):
+                    is_csv = True
+        
+        # Check for SVG
+        if '<svg' in content_lower and '</svg>' in content_lower:
+            is_svg = True
+        
+        # Check for markdown elements
+        if any(marker in content for marker in ['#', '**', '```', '|', '-', '*']):
+            is_markdown = True
+        
+        # Determine how to send the content
+        if is_svg or (wants_file and (is_json or is_yaml or is_csv)):
+            # Send as a file attachment
+            self.send_as_file(channel, content, prompt, is_svg)
+        elif is_json and not wants_yaml and not wants_csv:
+            # Send JSON with syntax highlighting
+            self.send_json_formatted(channel, content)
+        elif is_yaml and not wants_json and not wants_csv:
+            # Send YAML with syntax highlighting
+            self.send_yaml_formatted(channel, content)
+        elif is_csv:
+            # Send CSV as a table or code block
+            self.send_csv_formatted(channel, content)
+        elif is_markdown:
+            # Send as markdown
+            self.send_message(channel, content)
+        else:
+            # Default to code block for structured data
+            self.send_message(channel, content, code_block=True)
+    
+    def send_json_formatted(self, channel: str, json_content: str):
+        """Send JSON with proper formatting."""
+        try:
+            # Pretty print the JSON
+            parsed = json.loads(json_content)
+            pretty_json = json.dumps(parsed, indent=2)
+            
+            # Use JSON syntax highlighting
+            formatted = f"```json\n{pretty_json}\n```"
+            self.send_message(channel, formatted)
+        except:
+            # Fallback to plain code block
+            self.send_message(channel, json_content, code_block=True)
+    
+    def send_yaml_formatted(self, channel: str, yaml_content: str):
+        """Send YAML with proper formatting."""
+        # Use YAML syntax highlighting
+        formatted = f"```yaml\n{yaml_content}\n```"
+        self.send_message(channel, formatted)
+    
+    def send_csv_formatted(self, channel: str, csv_content: str):
+        """Send CSV as a formatted table or code block."""
+        lines = csv_content.strip().split('\n')
+        
+        # If small enough, convert to a Slack table
+        if len(lines) <= 10 and all(len(line.split(',')) <= 5 for line in lines):
+            # Convert to markdown table
+            headers = lines[0].split(',')
+            table = "| " + " | ".join(headers) + " |\n"
+            table += "|" + "|".join(["---"] * len(headers)) + "|\n"
+            
+            for line in lines[1:]:
+                cells = line.split(',')
+                table += "| " + " | ".join(cells) + " |\n"
+            
+            self.send_message(channel, table)
+        else:
+            # Too large for table, use code block
+            formatted = f"```csv\n{csv_content}\n```"
+            self.send_message(channel, formatted)
+    
+    def send_as_file(self, channel: str, content: str, prompt: str, is_svg: bool = False):
+        """Send content as a file attachment."""
+        import tempfile
+        import time
+        
+        # Determine file extension and mime type
+        if is_svg:
+            ext = '.svg'
+            mime_type = 'image/svg+xml'
+            filename = f"diagram_{int(time.time())}.svg"
+        elif 'json' in prompt.lower() or content.strip().startswith('{'):
+            ext = '.json'
+            mime_type = 'application/json'
+            filename = f"data_{int(time.time())}.json"
+        elif 'yaml' in prompt.lower():
+            ext = '.yaml'
+            mime_type = 'text/yaml'
+            filename = f"data_{int(time.time())}.yaml"
+        elif 'csv' in prompt.lower():
+            ext = '.csv'
+            mime_type = 'text/csv'
+            filename = f"data_{int(time.time())}.csv"
+        else:
+            ext = '.txt'
+            mime_type = 'text/plain'
+            filename = f"output_{int(time.time())}.txt"
+        
+        try:
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix=ext, delete=False) as tmp_file:
+                tmp_file.write(content)
+                tmp_path = tmp_file.name
+            
+            # Upload the file to Slack
+            response = self.web_client.files_upload_v2(
+                channel=channel,
+                file=tmp_path,
+                filename=filename,
+                initial_comment=f"Here's the {ext[1:].upper()} output you requested:"
+            )
+            
+            # Clean up
+            os.unlink(tmp_path)
+            
+            if not response["ok"]:
+                raise Exception(f"File upload failed: {response.get('error', 'Unknown error')}")
+                
+        except Exception as e:
+            logger.error(f"Failed to upload file: {e}")
+            # Fallback to text message
+            self.send_message(channel, content, code_block=True)
+    
+    def send_image_file(self, channel: str, file_path: str):
+        """Send an image file that was created by a tool."""
+        if not os.path.exists(file_path):
+            self.send_message(channel, f"❌ File not found: {file_path}")
+            return
+        
+        try:
+            # Get file extension
+            _, ext = os.path.splitext(file_path)
+            ext = ext.lower()
+            
+            # Map extensions to mime types
+            mime_types = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif',
+                '.svg': 'image/svg+xml'
+            }
+            
+            mime_type = mime_types.get(ext, 'application/octet-stream')
+            
+            # Upload the file to Slack
+            with open(file_path, 'rb') as file_content:
+                response = self.web_client.files_upload_v2(
+                    channel=channel,
+                    file=file_content,
+                    filename=os.path.basename(file_path),
+                    initial_comment="Here's the generated image:"
+                )
+            
+            if not response["ok"]:
+                raise Exception(f"File upload failed: {response.get('error', 'Unknown error')}")
+                
+        except Exception as e:
+            logger.error(f"Failed to upload image: {e}")
+            self.send_message(channel, f"❌ Failed to upload image: {str(e)}")
+    
+    def extract_filenames_from_text(self, text: str) -> List[str]:
+        """Extract potential filenames from Claude's response."""
+        import re
+        filenames = []
+        
+        # Look for quoted filenames
+        # Matches 'filename.ext' or "filename.ext" or `filename.ext`
+        pattern = r'[\'"`]([^\'"`]+\.[a-zA-Z0-9]+)[\'"`]'
+        matches = re.findall(pattern, text)
+        
+        for match in matches:
+            # Filter out URLs and paths
+            if not match.startswith('http') and '/' not in match:
+                filenames.append(match)
+        
+        # Also look for common file patterns without quotes
+        # e.g., "Created filename.csv" or "saved to data.json"
+        word_pattern = r'\b(\w+\.(?:csv|json|yaml|yml|txt|png|jpg|jpeg|svg|gif))\b'
+        word_matches = re.findall(word_pattern, text, re.IGNORECASE)
+        
+        for match in word_matches:
+            if match not in filenames:
+                filenames.append(match)
+        
+        return filenames
+    
+    def send_file_to_slack(self, channel: str, file_path: str, message: str = ""):
+        """Send a file to Slack with appropriate formatting."""
+        if not os.path.exists(file_path):
+            logger.warning(f"File not found for upload: {file_path}")
+            return
+        
+        file_name = os.path.basename(file_path)
+        _, ext = os.path.splitext(file_name.lower())
+        
+        # Read file content for small text files
+        if ext in ['.csv', '.json', '.yaml', '.yml', '.txt'] and os.path.getsize(file_path) < 50000:  # 50KB
+            try:
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                # Send a preview based on file type
+                if ext == '.csv':
+                    self.send_message(channel, f"📄 {message}")
+                    self.send_csv_formatted(channel, content)
+                elif ext == '.json':
+                    self.send_message(channel, f"📄 {message}")
+                    self.send_json_formatted(channel, content)
+                elif ext in ['.yaml', '.yml']:
+                    self.send_message(channel, f"📄 {message}")
+                    self.send_yaml_formatted(channel, content)
+                else:
+                    self.send_message(channel, f"📄 {message}")
+                    self.send_message(channel, content, code_block=True)
+            except Exception as e:
+                logger.error(f"Error reading file {file_path}: {e}")
+        
+        # Upload the actual file
+        try:
+            with open(file_path, 'rb') as file_content:
+                response = self.web_client.files_upload_v2(
+                    channel=channel,
+                    file=file_content,
+                    filename=file_name,
+                    initial_comment=message or f"File: {file_name}"
+                )
+            
+            if not response["ok"]:
+                raise Exception(f"File upload failed: {response.get('error', 'Unknown error')}")
+                
+        except Exception as e:
+            logger.error(f"Failed to upload file: {e}")
+            # If upload fails, at least tell them about the file
+            self.send_message(channel, f"📎 Created file: `{file_name}` (upload failed: {str(e)})")
 
     def is_authorized(self, user: str, channel: str) -> bool:
         """Check if user/channel is authorized."""
