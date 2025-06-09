@@ -32,7 +32,8 @@ load_dotenv(override=False)  # Explicit: don't override existing env vars
 
 # Diagnostic: Print key env vars at startup
 print(f"[STARTUP] DEBUG={os.environ.get('DEBUG', 'NOT SET')}")
-print(f"[STARTUP] CLAUDE_COMMAND={os.environ.get('CLAUDE_COMMAND', 'NOT SET')}")
+print(f"[STARTUP] CLAUDE_COMMAND={
+      os.environ.get('CLAUDE_COMMAND', 'NOT SET')}")
 
 
 # For development: Ensure we have full shell PATH
@@ -50,7 +51,8 @@ if "PATH" in os.environ:
             os.environ["PATH"] = f"{path}:{current_path}"
 
 # Configure logging
-log_level = logging.DEBUG if os.environ.get("DEBUG", "").lower() == "true" else logging.INFO
+log_level = logging.DEBUG if os.environ.get(
+    "DEBUG", "").lower() == "true" else logging.INFO
 logging.basicConfig(
     level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -112,23 +114,23 @@ class ClaudeSlackBot:
             if hasattr(self.socket_client, 'message_processor') and self.socket_client.message_processor:
                 logger.debug("Shutting down message_processor")
                 self.socket_client.message_processor.shutdown()
-                
+
             if hasattr(self.socket_client, 'current_app_monitor') and self.socket_client.current_app_monitor:
                 logger.debug("Shutting down current_app_monitor")
                 self.socket_client.current_app_monitor.shutdown()
-                
+
             if hasattr(self.socket_client, 'current_session_runner') and self.socket_client.current_session_runner:
                 logger.debug("Shutting down current_session_runner")
                 self.socket_client.current_session_runner.shutdown()
-            
+
             # Disable auto-reconnect before disconnecting
             if hasattr(self.socket_client, 'auto_reconnect_enabled'):
                 self.socket_client.auto_reconnect_enabled = False
-                
+
             # Mark as closed to prevent any new operations
             if hasattr(self.socket_client, 'closed'):
                 self.socket_client.closed = True
-                
+
             # Now try to disconnect and close
             self.socket_client.disconnect()
             self.socket_client.close()
@@ -231,7 +233,7 @@ class ClaudeSlackBot:
         self.log_audit(user, channel, prompt)
 
         # Send typing indicator
-        self.send_message(channel, "_Claude is thinking..._")
+        self.send_message(channel, "processing..._")
 
         try:
             # Execute Claude with restrictions
@@ -259,16 +261,16 @@ class ClaudeSlackBot:
         # Log the command with proper quoting for debugging
         import shlex
         logger.info(f"Executing: {shlex.join(cmd)}")
-        
+
         if DEBUG_MODE:
             # Log environment variables that might affect Claude auth
-            claude_env_vars = {k: v for k, v in os.environ.items() 
-                             if 'CLAUDE' in k or 'ANTHROPIC' in k or 'CONFIG' in k}
+            claude_env_vars = {k: v for k, v in os.environ.items()
+                               if 'CLAUDE' in k or 'ANTHROPIC' in k or 'CONFIG' in k}
             logger.debug(f"Claude-related env vars: {claude_env_vars}")
             logger.debug(f"HOME: {os.environ.get('HOME')}")
             logger.debug(f"USER: {os.environ.get('USER')}")
             logger.debug(f"PATH: {os.environ.get('PATH')}")
-            
+
             # Also check what the shell sees
             debug_result = subprocess.run(
                 ["zsh", "-i", "-l", "-c", "echo HOME=$HOME && echo USER=$USER && which claude && ls -la ~/.claude 2>/dev/null || echo 'No .claude dir'"],
@@ -277,14 +279,15 @@ class ClaudeSlackBot:
             )
             logger.debug(f"Shell environment check: {debug_result.stdout}")
             if debug_result.stderr:
-                logger.debug(f"Shell environment stderr: {debug_result.stderr}")
+                logger.debug(f"Shell environment stderr: {
+                             debug_result.stderr}")
 
         try:
             # Run through interactive login zsh shell to get aliases
             # -i = interactive (loads aliases)
             # -l = login shell (loads full environment)
             zsh_cmd = shlex.join(cmd)
-            
+
             result = subprocess.run(
                 ["zsh", "-i", "-l", "-c", zsh_cmd],
                 capture_output=True,
@@ -297,17 +300,17 @@ class ClaudeSlackBot:
             else:
                 error_msg = result.stderr.strip()
                 stdout_msg = result.stdout.strip()
-                
+
                 # Build detailed error message
                 error_parts = [f"Exit code: {result.returncode}"]
                 if error_msg:
                     error_parts.append(f"Stderr: {error_msg}")
                 if stdout_msg:
                     error_parts.append(f"Stdout: {stdout_msg}")
-                
+
                 # Log full command for debugging
                 logger.error(f"Command failed: {shlex.join(cmd)}")
-                
+
                 raise Exception(" | ".join(error_parts))
 
         except subprocess.TimeoutExpired:
@@ -377,7 +380,7 @@ class ClaudeSlackBot:
 
 def main():
     """Main entry point."""
-    
+
     # Validate environment
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
     missing = [var for var in required_vars if not os.environ.get(var)]
@@ -401,19 +404,20 @@ def main():
     except Exception as e:
         logger.error(f"Claude Code CLI not found or not working: {e}")
         logger.error(f"Tried command: {CLAUDE_COMMAND}")
-        logger.error("Please install Claude Code or set CLAUDE_COMMAND environment variable")
+        logger.error(
+            "Please install Claude Code or set CLAUDE_COMMAND environment variable")
         return
 
     # Create bot instance
     bot = ClaudeSlackBot()
-    
+
     # Set up interruptible wait with signal handling
     import signal
     import threading
     import time
-    
+
     stop_event = threading.Event()
-    
+
     def signal_handler(signum, frame):
         logger.info("\n[Shutting down] Ctrl+C received...")
         stop_event.set()
@@ -424,19 +428,19 @@ def main():
             pass
         # Force exit after brief delay
         threading.Timer(0.5, lambda: os._exit(0)).start()
-    
+
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     try:
         # Start the bot
         bot.start()
-        
+
         # Use interruptible wait instead of infinite sleep
         while not stop_event.is_set():
             stop_event.wait(0.1)  # Check every 100ms
-            
+
     except Exception as e:
         logger.error(f"Bot crashed: {e}", exc_info=True)
     finally:
