@@ -16,6 +16,13 @@ This bot demonstrates how to:
 Slack User → Slack Bot → Claude Code CLI → GameCode MCP2 Server → Restricted Tools
 ```
 
+### File Operations Sandboxing
+- Each request gets an isolated directory: `/tmp/slackbot_sandbox/<timestamp>_<user_id>/`
+- MCP configuration is generated dynamically with absolute paths
+- Tools are loaded from `slack-bot-tools.yaml` 
+- Files created are automatically uploaded to Slack
+- Sandbox is cleaned up after 5 minutes
+
 ## Setup
 
 ### 1. Create Slack App
@@ -30,6 +37,7 @@ Slack User → Slack Bot → Claude Code CLI → GameCode MCP2 Server → Restri
    - `im:history`
    - `im:read`
    - `im:write`
+   - `files:write` (for file uploads)
 6. Install app to workspace
 7. Save tokens for `.env`
 
@@ -43,6 +51,9 @@ pip install slack-sdk python-dotenv
 cp .env.example .env
 
 # Edit .env with your tokens
+
+# Set up MCP sandbox (one-time setup)
+./setup_sandbox.sh
 ```
 
 ### 3. Configure MCP Tools
@@ -277,12 +288,50 @@ data:
   AWS_REGION: <base64>
 ```
 
+## File Handling
+
+The bot intelligently handles file creation and uploads:
+
+### Secure File Creation
+- Each request gets its own subdirectory: `/tmp/slackbot_sandbox/<request-id>/`
+- Bot copies `mcp-config.json` to the sandbox directory
+- Bot changes to that directory before running Claude
+- Claude uses `--mcp-config` to load local MCP configuration
+- All file operations are naturally sandboxed to that directory
+- No global MCP configuration needed - each request is isolated
+- Directories are automatically cleaned up after 5 minutes
+
+### Automatic File Detection
+The bot detects created files through:
+1. **Directory monitoring** - Any new files in the working directory
+2. **Response parsing** - Extracts filenames mentioned like `created 'data.csv'`
+3. **Smart formatting** - Shows CSV as tables, JSON with syntax highlighting
+
+### Supported File Types
+- **Data**: CSV, JSON, YAML (previewed and uploaded)
+- **Images**: PNG, JPG, SVG (uploaded directly)
+- **Text**: TXT, MD (shown as formatted text)
+- **Other**: Any file type can be uploaded
+
+### Example Usage
+```
+@bot create a CSV file with system metrics
+@bot generate a pie chart of memory usage as PNG
+@bot save the configuration as JSON
+```
+
 ## Troubleshooting
 
 ### Bot not responding
 1. Check Socket Mode is enabled
 2. Verify tokens in `.env`
 3. Check `claude_bot.log`
+
+### File upload errors
+If you see "missing_scope" errors:
+1. Add `files:write` permission to your Slack app
+2. Reinstall the app to your workspace
+3. The bot will show file content even if upload fails
 
 ### Claude errors
 
