@@ -311,17 +311,24 @@ class ClaudeSlackBot:
 
             # Find all files created in the working directory
             created_files = []
+            source_files = []  # Track source files separately
             for item in os.listdir('.'):
                 if os.path.isfile(item):
-                    created_files.append(item)
+                    _, ext = os.path.splitext(item.lower())
+                    if ext in ['.dot', '.puml']:
+                        source_files.append(item)
+                    else:
+                        created_files.append(item)
             
             # Delete the processing message now that we have results
             self.delete_message(channel, processing_ts)
             
             if created_files:
                 logger.info(f"Files created in working directory: {created_files}")
+                if source_files:
+                    logger.info(f"Source files created (not uploaded): {source_files}")
                 
-                # Send each file to Slack
+                # Send each file to Slack (excluding source files)
                 for file_name in created_files:
                     file_path = os.path.abspath(file_name)
                     self.send_file_to_slack(channel, file_path, f"📎 Created: {file_name}")
@@ -747,12 +754,14 @@ class ClaudeSlackBot:
         matches = re.findall(pattern, text)
         
         for match in matches:
-            # Filter out URLs and paths
-            if not match.startswith('http') and '/' not in match:
+            # Filter out URLs, paths, and source files
+            _, ext = os.path.splitext(match.lower())
+            if not match.startswith('http') and '/' not in match and ext not in ['.dot', '.puml']:
                 filenames.append(match)
         
         # Also look for common file patterns without quotes
         # e.g., "Created filename.csv" or "saved to data.json"
+        # Exclude source file extensions
         word_pattern = r'\b(\w+\.(?:csv|json|yaml|yml|txt|png|jpg|jpeg|svg|gif))\b'
         word_matches = re.findall(word_pattern, text, re.IGNORECASE)
         

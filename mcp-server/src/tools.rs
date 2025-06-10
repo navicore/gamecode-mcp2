@@ -485,6 +485,86 @@ impl ToolManager {
                     "bytes_written": content.len()
                 }))
             }
+            "create_graphviz_diagram" => {
+                let filename = args
+                    .get("filename")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'filename'"))?;
+                let format = args
+                    .get("format")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'format'"))?;
+                let content = args
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'content'"))?;
+
+                // Save DOT source file
+                let dot_file = format!("{}.dot", filename);
+                tokio::fs::write(&dot_file, content).await?;
+
+                // Generate diagram using GraphViz
+                let output_file = format!("{}.{}", filename, format);
+                let output = tokio::process::Command::new("dot")
+                    .arg(format!("-T{}", format))
+                    .arg(&dot_file)
+                    .arg("-o")
+                    .arg(&output_file)
+                    .output()
+                    .await?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(anyhow::anyhow!("GraphViz error: {}", stderr));
+                }
+
+                Ok(json!({
+                    "status": "success",
+                    "source_file": dot_file,
+                    "output_file": output_file,
+                    "format": format
+                }))
+            }
+            "create_plantuml_diagram" => {
+                let filename = args
+                    .get("filename")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'filename'"))?;
+                let format = args
+                    .get("format")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'format'"))?;
+                let content = args
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing parameter 'content'"))?;
+
+                // Save PlantUML source file
+                let puml_file = format!("{}.puml", filename);
+                tokio::fs::write(&puml_file, content).await?;
+
+                // Generate diagram using PlantUML
+                let output = tokio::process::Command::new("plantuml")
+                    .arg(format!("-t{}", format))
+                    .arg(&puml_file)
+                    .output()
+                    .await?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(anyhow::anyhow!("PlantUML error: {}", stderr));
+                }
+
+                // PlantUML generates output with same base name
+                let output_file = format!("{}.{}", filename, format);
+
+                Ok(json!({
+                    "status": "success",
+                    "source_file": puml_file,
+                    "output_file": output_file,
+                    "format": format
+                }))
+            }
             _ => Err(anyhow::anyhow!("Unknown internal handler: {}", handler)),
         }
     }
