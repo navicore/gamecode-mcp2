@@ -240,6 +240,9 @@ class ClaudeSlackBot:
                     channel} requested: {prompt[:100]}...")
         self.log_audit(user, channel, prompt)
 
+        # Get conversation history for context
+        context = self.get_conversation_context(channel)
+
         # Send typing indicator and capture timestamp
         processing_ts = self.send_message(channel, "_processing..._")
 
@@ -306,8 +309,8 @@ class ClaudeSlackBot:
             os.chdir(working_dir)
             logger.debug(f"Changed to working directory: {working_dir}")
             
-            # Execute Claude with MCP config JSON
-            result = self.execute_claude(prompt, working_dir, mcp_config_json)
+            # Execute Claude with MCP config JSON and context
+            result = self.execute_claude(prompt, working_dir, mcp_config_json, context)
 
             # Find all files created in the working directory
             created_files = []
@@ -382,8 +385,14 @@ class ClaudeSlackBot:
                     logger.error(f"Error cleaning up {working_dir}: {e}")
             threading.Thread(target=cleanup, daemon=True).start()
 
-    def execute_claude(self, prompt: str, working_dir: str = None, mcp_config_json: str = None) -> str:
+    def execute_claude(self, prompt: str, working_dir: str = None, mcp_config_json: str = None, context: str = None) -> str:
         """Execute Claude Code CLI with restrictions."""
+        # Build the full prompt with context
+        if context:
+            full_prompt = f"{context}\n\nCurrent request: {prompt}"
+        else:
+            full_prompt = prompt
+            
         cmd = [
             CLAUDE_COMMAND,
             "--model", CLAUDE_MODEL,
@@ -395,7 +404,7 @@ class ClaudeSlackBot:
             cmd.extend(["--mcp-config", mcp_config_json])
             logger.debug(f"Using MCP config JSON")
         
-        cmd.extend(["-p", prompt])
+        cmd.extend(["-p", full_prompt])
         
         # Log the command with proper quoting for debugging
         import shlex
@@ -848,6 +857,64 @@ class ClaudeSlackBot:
             response = self.web_client.auth_test()
             return response.get("user_id")
         except:
+            return None
+    
+    def get_conversation_context(self, channel: str) -> Optional[str]:
+        """Get recent conversation history for context."""
+        try:
+            # Fetch last 5 messages from the channel
+            response = self.web_client.conversations_history(
+                channel=channel,
+                limit=6  # Get 6 to account for the current "processing..." message
+            )
+            
+            if not response["ok"]:
+                logger.warning(f"Failed to fetch conversation history: {response.get('error')}")
+                return None
+            
+            messages = response.get("messages", [])
+            if not messages:
+                return None
+            
+            # Get bot user ID for identifying bot messages
+            bot_user_id = self.get_bot_user_id()
+            
+            # Build context from messages (newest first in Slack API, so reverse)
+            context_parts = ["Recent conversation history:"]
+            
+            for msg in reversed(messages[1:]):  # Skip the most recent (processing...) message
+                # Skip system messages and subtypes
+                if msg.get("subtype"):
+                    continue
+                    
+                # Get user info
+                user_id = msg.get("user", "Unknown")
+                text = msg.get("text", "")
+                
+                # Clean bot mentions from text
+                if bot_user_id:
+                    text = text.replace(f"<@{bot_user_id}>", "").strip()
+                
+                # Format message based on whether it's from the bot
+                if user_id == bot_user_id:
+                    context_parts.append(f"Assistant: {text}")
+                else:
+                    # Get username if possible
+                    try:
+                        user_info = self.web_client.users_info(user=user_id)
+                        username = user_info["user"]["name"] if user_info["ok"] else "User"
+                    except:
+                        username = "User"
+                    context_parts.append(f"{username}: {text}")
+            
+            # Only return context if we have meaningful history
+            if len(context_parts) > 1:
+                return "\n".join(context_parts)
+            else:
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error fetching conversation context: {e}")
             return None
 
     def log_audit(self, user: str, channel: str, prompt: str):
