@@ -160,6 +160,14 @@ class ClaudeSlackBot:
     def handle_event(self, event_payload: Dict):
         """Handle Slack events."""
         event = event_payload.get("event", {})
+        
+        # Skip bot's own messages and system messages
+        if event.get("user") == self.get_bot_user_id():
+            return
+            
+        # Skip message subtypes (edits, deletes, etc) - these often have empty text
+        if event.get("subtype"):
+            return
 
         if event.get("type") == "app_mention":
             self.handle_mention(event)
@@ -232,8 +240,8 @@ class ClaudeSlackBot:
                     channel} requested: {prompt[:100]}...")
         self.log_audit(user, channel, prompt)
 
-        # Send typing indicator
-        self.send_message(channel, "_processing..._")
+        # Send typing indicator and capture timestamp
+        processing_ts = self.send_message(channel, "_processing..._")
 
         # Create a clean working directory for this request within the sandbox
         import tempfile
@@ -307,6 +315,9 @@ class ClaudeSlackBot:
                 if os.path.isfile(item):
                     created_files.append(item)
             
+            # Delete the processing message now that we have results
+            self.delete_message(channel, processing_ts)
+            
             if created_files:
                 logger.info(f"Files created in working directory: {created_files}")
                 
@@ -322,14 +333,31 @@ class ClaudeSlackBot:
                     file_path = os.path.abspath(file_name)
                     self.send_file_to_slack(channel, file_path, f"📎 Created: {file_name}")
 
-            # Send the text response
-            self.send_formatted_content(channel, result, prompt)
+            # Send the text response only if no files were created, or if it contains more than just file creation info
+            if not created_files:
+                # No files created, send full response
+                self.send_formatted_content(channel, result, prompt)
+            else:
+                # Files were created - only send text if it's not just about file creation
+                # Simple heuristic: if the response is short and mentions the filename, skip it
+                result_lower = result.lower()
+                is_just_file_notification = (
+                    len(result) < 200 and 
+                    any(fname.lower() in result_lower for fname in created_files) and
+                    any(word in result_lower for word in ['created', 'saved', 'generated', 'wrote'])
+                )
+                
+                if not is_just_file_notification:
+                    # Response contains additional information beyond file creation
+                    self.send_formatted_content(channel, result, prompt)
             
         except subprocess.TimeoutExpired:
+            self.delete_message(channel, processing_ts)
             self.send_message(
                 channel, "⏱️ Claude took too long to respond. Please try a simpler request.")
         except Exception as e:
             logger.error(f"Error executing Claude: {e}")
+            self.delete_message(channel, processing_ts)
             self.send_message(channel, f"❌ Error: {str(e)}")
         finally:
             # Always return to original directory
@@ -426,18 +454,33 @@ class ClaudeSlackBot:
             raise
 
     def send_message(self, channel: str, text: str, code_block: bool = False):
-        """Send a message to Slack."""
+        """Send a message to Slack. Returns the message timestamp."""
         if code_block:
             text = f"```\n{text}\n```"
 
         try:
-            self.web_client.chat_postMessage(
+            response = self.web_client.chat_postMessage(
                 channel=channel,
                 text=text,
                 mrkdwn=True
             )
+            return response.get('ts')  # Return the timestamp
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
+            return None
+    
+    def delete_message(self, channel: str, timestamp: str):
+        """Delete a message from Slack."""
+        if not timestamp:
+            return
+        
+        try:
+            self.web_client.chat_delete(
+                channel=channel,
+                ts=timestamp
+            )
+        except Exception as e:
+            logger.debug(f"Failed to delete message: {e}")
     
     def send_formatted_content(self, channel: str, content: str, prompt: str):
         """Send content with appropriate formatting based on type detection."""
@@ -719,7 +762,7 @@ class ClaudeSlackBot:
         
         return filenames
     
-    def send_file_to_slack(self, channel: str, file_path: str, message: str = ""):
+    def send_file_to_slack(self, channel: str, file_path: str, message: str = "", skip_preview: bool = True):
         """Send a file to Slack with appropriate formatting."""
         if not os.path.exists(file_path):
             logger.warning(f"File not found for upload: {file_path}")
@@ -728,8 +771,8 @@ class ClaudeSlackBot:
         file_name = os.path.basename(file_path)
         _, ext = os.path.splitext(file_name.lower())
         
-        # Read file content for small text files
-        if ext in ['.csv', '.json', '.yaml', '.yml', '.txt'] and os.path.getsize(file_path) < 50000:  # 50KB
+        # Read file content for small text files - but only show preview if not skipping
+        if not skip_preview and ext in ['.csv', '.json', '.yaml', '.yml', '.txt'] and os.path.getsize(file_path) < 50000:  # 50KB
             try:
                 with open(file_path, 'r') as f:
                     content = f.read()
