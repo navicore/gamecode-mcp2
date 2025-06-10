@@ -26,6 +26,7 @@ Slack User → Slack Bot (Socket Mode) → Claude CLI → MCP Server → Sandbox
    - Handles mentions, DMs, and slash commands
    - Manages sandboxed execution environments
    - Automatically uploads created files to Slack
+   - Includes last 5 messages as conversation context
 
 2. **MCP Tools** (`slack-bot-tools.yaml`)
    - Defines available tools with security restrictions
@@ -177,6 +178,22 @@ CLAUDE_ALLOWED_TOOLS="mcp__gamecode__read_file,mcp__gamecode__list_files"
 
 # Example: Full file operations
 CLAUDE_ALLOWED_TOOLS="mcp__gamecode__write_file,mcp__gamecode__read_file,mcp__gamecode__create_csv,mcp__gamecode__create_json"
+```
+
+## Conversation Context
+
+The bot includes the last 5 messages from the channel as context, enabling:
+- Follow-up questions ("make it bigger", "add a title")
+- References to previous outputs ("update that CSV")
+- Natural multi-turn conversations
+- Iterative refinement of diagrams and data
+
+### Context Format
+```
+Recent conversation history:
+User: Create a simple flowchart
+Assistant: Created flowchart.png
+User: Add a legend to it
 ```
 
 ## File Handling
