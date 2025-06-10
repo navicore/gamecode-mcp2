@@ -273,7 +273,8 @@ class ClaudeSlackBot:
 
         # Create MCP config dynamically with absolute paths
         bot_dir = os.path.dirname(os.path.abspath(__file__))
-        tools_file_path = os.path.join(bot_dir, 'slack-bot-tools.yaml')
+        default_tools_file_path = os.path.join(bot_dir, 'slack-bot-tools.yaml')
+        tools_file_path = os.environ.get("SLACK_BOT_TOOLS_FILE", default_tools_file_path)
         
         mcp_config = {
             "mcpServers": {
@@ -361,11 +362,6 @@ class ClaudeSlackBot:
         
         cmd.extend(["-p", prompt])
         
-        # Add custom tools file if specified
-        tools_file = os.environ.get("SLACK_BOT_TOOLS_FILE", "slack-bot-tools.yaml")
-        if os.path.exists(tools_file):
-            cmd.extend(["--toolsFile", tools_file])
-
         # Log the command with proper quoting for debugging
         import shlex
         logger.info(f"Executing: {shlex.join(cmd)}")
