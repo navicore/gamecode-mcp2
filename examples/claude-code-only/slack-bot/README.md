@@ -38,6 +38,28 @@ Slack User → Slack Bot (Socket Mode) → Claude CLI → MCP Server → Sandbox
    - Request size limits
    - Optional user/channel restrictions
 
+## Prerequisites
+
+- Python 3.8+
+- Claude Code CLI installed and authenticated
+- gamecode-mcp2 v0.6.0+ installed
+- GraphViz (`dot` command) - for diagram generation
+- PlantUML (`plantuml` command) - for diagram generation
+
+### Install Diagram Tools (optional, for diagram features)
+
+```bash
+# macOS
+brew install graphviz plantuml
+
+# Ubuntu/Debian
+sudo apt-get install graphviz plantuml
+
+# Check installation
+dot -V
+plantuml -version
+```
+
 ## Setup
 
 ### 1. Create Slack App
@@ -109,6 +131,15 @@ User: @ClaudeBot analyze this data and create a chart
 Bot: [Generates visualization and uploads as image]
 ```
 
+### Diagram Generation
+```
+User: Create a GraphViz diagram showing a simple flowchart
+Bot: [Creates DOT file, generates PNG/SVG, uploads only the image]
+
+User: Generate a PlantUML sequence diagram for a login flow
+Bot: [Creates PUML file, generates diagram, uploads the result]
+```
+
 ### Slash Commands (if configured)
 ```
 /claude summarize the latest metrics in JSON format
@@ -123,7 +154,8 @@ The bot uses `slack-bot-tools.yaml` which provides:
 - `write_file` - Create text files
 - `create_csv` - Create CSV files with validation
 - `create_json` - Create JSON files with validation
-- `save_diagram` - Save SVG/PNG diagrams
+- `create_graphviz_diagram` - Create GraphViz diagrams from DOT text (PNG/SVG)
+- `create_plantuml_diagram` - Create PlantUML diagrams from source text (PNG/SVG)
 - `list_files` - List directory contents
 - `search_files` - Find files by pattern
 - `grep` - Search file contents
@@ -154,7 +186,8 @@ CLAUDE_ALLOWED_TOOLS="mcp__gamecode__write_file,mcp__gamecode__read_file,mcp__ga
 The bot automatically detects and uploads files that Claude creates:
 - CSV files are previewed as formatted tables
 - JSON files are syntax highlighted
-- Images are uploaded directly
+- Images (PNG, SVG, JPG) are uploaded directly
+- Diagram source files (.dot, .puml) are created but not uploaded
 - Large files are uploaded without preview
 
 ### Sandbox Lifecycle

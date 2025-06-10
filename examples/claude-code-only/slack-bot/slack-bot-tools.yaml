@@ -144,31 +144,61 @@ tools:
           - "~"
         require_extension: ".json"
         
-  - name: save_diagram
-    description: Save a diagram (SVG/PNG) in the working directory
+  - name: create_graphviz_diagram
+    description: Create a GraphViz diagram from DOT source text
     command: internal
-    internal_handler: write_file
+    internal_handler: create_graphviz_diagram
     args:
-      - name: path
-        description: Path to save the diagram
+      - name: filename
+        description: Base filename without extension (e.g., 'flowchart')
+        required: true
+        type: string
+      - name: format
+        description: Output format (png or svg)
         required: true
         type: string
       - name: content
-        description: Diagram content (SVG/PNG data)
+        description: GraphViz DOT source code
         required: true
         type: string
     validation:
-      path:
-        allow_relative: true
-        allow_absolute: false
+      filename:
         deny_patterns:
           - ".."
+          - "/"
           - "~"
-        allowed_extensions:
-          - ".svg"
-          - ".png"
-          - ".jpg"
-          - ".jpeg"
+      format:
+        allowed_values:
+          - "png"
+          - "svg"
+        
+  - name: create_plantuml_diagram
+    description: Create a PlantUML diagram from source text
+    command: internal
+    internal_handler: create_plantuml_diagram
+    args:
+      - name: filename
+        description: Base filename without extension (e.g., 'sequence')
+        required: true
+        type: string
+      - name: format
+        description: Output format (png or svg)
+        required: true
+        type: string
+      - name: content
+        description: PlantUML source code
+        required: true
+        type: string
+    validation:
+      filename:
+        deny_patterns:
+          - ".."
+          - "/"
+          - "~"
+      format:
+        allowed_values:
+          - "png"
+          - "svg"
 
 # Security settings
 security:
@@ -193,6 +223,8 @@ security:
     - .png
     - .jpg
     - .jpeg
+    - .dot
+    - .puml
 
 # Note: The MCP server should be configured to run with a specific
 # working directory for each request, e.g., /tmp/slackbot/<request-id>/
