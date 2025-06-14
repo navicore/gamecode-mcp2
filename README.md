@@ -26,10 +26,11 @@ MCP's approach is sound.
 
 ## Architecture
 
-This workspace contains two crates:
+This workspace contains three crates:
 
 - `mcp-server` - The MCP server that loads tools from `tools.yaml` and exposes them via the protocol
 - `mcp-client` - A client library for testing and integration
+- `mcp-host` - Streaming-aware integration layer for chat applications
 
 ## Usage
 

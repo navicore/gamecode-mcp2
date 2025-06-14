@@ -1,6 +1,6 @@
 /// Example of a chat application using mcp-host with streaming
 use anyhow::Result;
-use futures::stream;
+use futures::{stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -145,7 +145,7 @@ impl OllamaClient {
     async fn chat_streaming(
         &self,
         messages: &[Message],
-    ) -> Result<impl futures::Stream<Item = String>> {
+    ) -> Result<std::pin::Pin<Box<dyn futures::Stream<Item = String> + Send>>> {
         // In real implementation, this would stream from Ollama API
         // For demo, we'll simulate a response with tool usage
         
@@ -188,11 +188,12 @@ impl OllamaClient {
         };
 
         // Simulate streaming with delays
-        Ok(stream::iter(tokens.into_iter().map(|s| s.to_string()))
+        let owned_tokens: Vec<String> = tokens.into_iter().map(|s| s.to_string()).collect();
+        Ok(Box::pin(stream::iter(owned_tokens)
             .then(|token| async move {
                 sleep(Duration::from_millis(50)).await; // Simulate network delay
                 token
-            }))
+            })))
     }
 }
 
@@ -245,7 +246,7 @@ struct Message {
 }
 
 // Import types from mcp-host
-use mcp_host::chat_integration::{
+use gamecode_mcp_host::{
     McpChatIntegration, ChatIntegrationConfig, StreamingMode,
     InstrumentationConfig, ProcessedToken,
 };

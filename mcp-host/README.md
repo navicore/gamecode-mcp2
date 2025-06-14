@@ -1,153 +1,176 @@
-# MCP Host
+# MCP-Host
 
-A Rust crate that bridges Language Learning Models (LLMs) with Model Context Protocol (MCP) servers, enabling LLMs to use tools through a robust retry mechanism that works across different models.
+A streaming-aware integration layer for adding Model Context Protocol (MCP) tool support to chat applications.
 
 ## Overview
 
-MCP Host solves the challenge of inconsistent tool/function calling support across different LLM models by implementing a prompt-based approach with intelligent retry logic. Instead of relying on model-specific tool APIs, it uses structured prompts and validates responses, retrying with corrective feedback when necessary.
+`mcp-host` enables chat applications to seamlessly integrate MCP tools while maintaining full control over their LLM interactions. It provides intelligent streaming interception to identify and execute tool calls without disrupting the user experience.
 
-## Features
+## Key Features
 
-- **Universal Tool Support**: Works with any LLM model, not just those with native tool support
-- **Intelligent Retry Logic**: Automatically retries failed tool calls with corrective prompts
-- **Multi-Provider Support**: Currently supports Ollama, easily extensible to other providers
-- **Conversation Management**: Maintains conversation history with automatic token management
-- **Safety Constraints**: Built-in rate limiting and tool filtering
-- **Schema Validation**: Validates tool calls against MCP tool schemas
+- **Streaming-aware**: Process tokens in real-time without blocking
+- **Smart buffering**: Automatically detect and extract tool calls
+- **Multiple modes**: Choose between smart buffering, passthrough, or placeholder modes
+- **Tool execution**: Execute MCP tools transparently in the background
+- **Instrumentation**: Built-in debugging and performance monitoring
+- **Chat app friendly**: Designed to integrate with existing chat architectures
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph "Chat Application"
+        USER[User Input]
+        UI[UI Display]
+        CHAT[Chat Logic]
+    end
+    
+    subgraph "mcp-host"
+        MCP[McpChatIntegration]
+        SI[StreamingInterceptor]
+        
+        SI --> |Narrative| UI
+        SI --> |Tool Calls| MCP
+    end
+    
+    subgraph "External"
+        LLM[LLM Provider]
+        TOOLS[MCP Tools]
+    end
+    
+    USER --> CHAT
+    CHAT --> LLM
+    LLM --> |Token Stream| SI
+    MCP --> TOOLS
+    TOOLS --> |Results| CHAT
 ```
-┌─────────────┐     ┌──────────┐     ┌────────────┐
-│   Your App  │────▶│ MCP Host │────▶│ MCP Server │
-└─────────────┘     └─────┬────┘     └────────────┘
-                          │
-                          ▼
-                    ┌──────────┐
-                    │   LLM    │
-                    │ (Ollama) │
-                    └──────────┘
-```
 
-## How It Works
-
-1. **Prompt Engineering**: Formats tool schemas into clear instructions for the LLM
-2. **Response Parsing**: Extracts JSON tool calls from LLM responses
-3. **Validation**: Checks tool calls against schemas
-4. **Retry on Failure**: If validation fails, adds error context and retries with reduced temperature
-5. **Tool Execution**: Valid tool calls are executed via MCP client
-6. **Result Integration**: Tool results are added back to the conversation
-
-## Usage
+## Quick Start
 
 ```rust
-use mcp_host::{McpHost, McpHostConfig, OllamaProvider};
-use std::sync::Arc;
+use gamecode_mcp_host::{
+    McpChatIntegration, ChatIntegrationConfig, StreamingMode,
+    ProcessedToken, InstrumentationConfig,
+};
 
 // Initialize MCP client
-let mcp_client = mcp_client::McpClient::connect(
-    "path/to/mcp-server",
-    &["--tools", "tools.yaml"],
-).await?;
-let mcp_client = Arc::new(mcp_client);
+let mcp_client = Arc::new(Mutex::new(
+    gamecode_mcp_client::McpClient::connect("path/to/mcp-server", &[]).await?
+));
 
-// Create LLM provider
-let ollama = OllamaProvider::new("llama3.1:8b".to_string());
-
-// Build MCP host
-let mut host = McpHost::builder()
-    .with_llm_provider(Box::new(ollama))
-    .with_mcp_client(mcp_client)
-    .with_config(McpHostConfig::default())
-    .build()?;
-
-// Process messages
-let response = host.process_message("List files in the current directory").await?;
-```
-
-## Retry Mechanism
-
-The retry mechanism is the key innovation that enables reliable tool usage across different models:
-
-1. **Initial Attempt**: Send prompt with tool schemas and usage instructions
-2. **Validation**: Check if response contains valid JSON tool calls
-3. **Retry on Failure**: 
-   - Add previous errors to the prompt
-   - Reduce temperature for more deterministic output
-   - Provide specific correction instructions
-4. **Backoff**: Exponential backoff with jitter between retries
-
-Example retry prompt addition:
-```
-IMPORTANT: Previous attempts failed with these errors:
-Attempt 1: Invalid JSON format - expected {"tool": "name", "params": {...}}
-Attempt 2: Missing required parameter 'path'
-
-Please correct these issues in your response. Ensure:
-1. Tool calls use valid JSON format
-2. Parameter names match the schema exactly
-3. Required parameters are not missing
-```
-
-## Model-Specific Optimizations
-
-While the system works with any model, it includes optimizations for specific models:
-
-- **llama3.1**: Uses native tool support when available
-- **mistral**: Optimized prompts for better JSON extraction
-- **qwen2.5-coder**: Code-focused prompts for better tool usage
-
-## Safety Features
-
-- **Rate Limiting**: Configurable requests per minute
-- **Token Limits**: Maximum tokens per request
-- **Tool Filtering**: Block dangerous tool patterns
-- **Tool Call Limits**: Maximum tools per request
-
-## Configuration
-
-```rust
-let config = McpHostConfig {
-    max_retries: 3,
-    retry_delay_ms: 1000,
-    temperature_reduction: 0.1,
-    safety_constraints: SafetyConfig {
-        max_tokens_per_request: 4096,
-        max_tools_per_request: 5,
-        rate_limit_per_minute: 30,
-        blocked_tool_patterns: vec!["rm".to_string()],
+// Configure integration
+let config = ChatIntegrationConfig {
+    streaming_mode: StreamingMode::SmartBuffering { max_buffer_chars: 150 },
+    enhance_system_prompts: true,
+    max_tool_rounds: 3,
+    instrumentation: InstrumentationConfig {
+        log_path: Some("mcp_debug.log".to_string()),
+        log_token_classifications: false,
+        log_performance_metrics: true,
     },
 };
-```
 
-## Extending
+// Create integration
+let integration = McpChatIntegration::new(mcp_client, config).await?;
 
-### Adding New LLM Providers
+// Process streaming response
+let mut handle = integration.process_streaming_response(token_stream).await?;
 
-Implement the `LlmProvider` trait:
+// Handle tokens
+while let Some(token) = handle.token_stream.recv().await {
+    match token {
+        ProcessedToken::Narrative(text) => {
+            // Display to user
+        }
+        ProcessedToken::ToolCall(_) => {
+            // Hidden from user
+        }
+        ProcessedToken::Buffered(_) => {
+            // Still being analyzed
+        }
+    }
+}
 
-```rust
-#[async_trait]
-pub trait LlmProvider: Send + Sync {
-    async fn generate(&self, request: LlmRequest) -> Result<LlmResponse>;
-    fn name(&self) -> &str;
-    fn supports_tools(&self) -> bool { false }
+// Handle tool executions
+while let Some(tool) = handle.tool_stream.recv().await {
+    println!("Tool {} executed in {}ms", tool.tool_name, tool.execution_time_ms);
 }
 ```
 
-### Custom Prompt Templates
+## Streaming Modes
 
-Create model-specific prompts by extending `PromptTemplate`:
+### Smart Buffering (Default)
+Intelligently detects tool calls in the stream and extracts them for execution while passing narrative text through immediately.
 
-```rust
-let template = PromptTemplate::new("custom-model");
-// Customize tool formatting and parsing
+### Passthrough
+No processing - all tokens pass through unchanged. Use when you want MCP connectivity but handle tools differently.
+
+### With Placeholders
+Replace tool calls with user-friendly placeholder text while still executing tools in the background.
+
+## State Machine Design
+
+The streaming interceptor uses a state machine to classify tokens:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Narrative: Start
+    Narrative --> MaybeToolStart: Tool pattern detected
+    Narrative --> Narrative: Regular text
+    
+    MaybeToolStart --> InToolCall: Valid JSON start
+    MaybeToolStart --> Narrative: False alarm
+    
+    InToolCall --> InToolCall: Tracking braces
+    InToolCall --> AfterToolCall: Complete JSON (depth=0)
+    InToolCall --> Narrative: Invalid JSON
+    
+    AfterToolCall --> MaybeToolStart: Another tool pattern
+    AfterToolCall --> Narrative: Resume text
 ```
+
+## Examples
+
+See the [examples directory](../examples/) for complete working examples:
+
+- `minimal_streaming.rs` - Basic integration
+- `streaming_chat_app.rs` - Full chat application
+- `passthrough_mode.rs` - No interception mode
+- `placeholder_mode.rs` - User-friendly placeholders
+- `instrumentation_demo.rs` - Debug logging
+
+## Documentation
+
+- [Streaming Architecture](docs/streaming-architecture.md) - Detailed explanation of the streaming system
+- [Implementation Details](docs/implementation-diagram.md) - Internal type architecture and data flow
+
+## Integration with Chat Applications
+
+The key insight: Chat applications need to maintain control of their LLM integration while adding tool support. This crate provides that capability without requiring changes to existing chat architectures.
+
+Your chat app continues to:
+- Manage conversation history
+- Control LLM parameters
+- Handle authentication
+- Manage context windows
+
+`mcp-host` adds:
+- Transparent tool detection
+- Automatic tool execution
+- Result integration
+- Debug instrumentation
+
+## Performance
+
+- **Minimal latency**: Narrative text passes through immediately
+- **Concurrent execution**: Tools run in parallel with token display
+- **Bounded memory**: Buffer size limits prevent unbounded growth
+- **Single-pass parsing**: O(n) complexity for token classification
 
 ## Future Enhancements
 
-- Support for more LLM providers (OpenAI, Anthropic, etc.)
-- Streaming responses
-- Tool call caching
-- Metrics and observability
-- Fine-tuning data collection from retry patterns
+- [ ] Streaming tool results back into the response
+- [ ] Tool call validation and sandboxing
+- [ ] Response caching for identical tool calls
+- [ ] Model-specific prompt optimization
+- [ ] WebAssembly support for browser integration

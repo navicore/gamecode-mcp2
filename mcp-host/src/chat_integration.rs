@@ -2,7 +2,7 @@
 use crate::streaming_interceptor::{StreamingInterceptor, TokenClass, STREAMING_FRIENDLY_TOOL_PROMPT};
 use anyhow::Result;
 use futures::{Stream, StreamExt};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -110,7 +110,7 @@ impl McpChatIntegration {
         token_stream: S,
     ) -> Result<StreamingResponseHandle>
     where
-        S: Stream<Item = String> + Send + 'static,
+        S: Stream<Item = String> + Send + 'static + Unpin,
     {
         let (processed_tx, processed_rx) = mpsc::channel(100);
         let (tool_tx, tool_rx) = mpsc::channel(10);
@@ -144,10 +144,10 @@ impl McpChatIntegration {
         config: ChatIntegrationConfig,
         instrumentation: Option<InstrumentationHandle>,
     ) where
-        S: Stream<Item = String> + Send,
+        S: Stream<Item = String> + Send + 'static + Unpin,
     {
         match config.streaming_mode {
-            StreamingMode::SmartBuffering { max_buffer_chars } => {
+            StreamingMode::SmartBuffering { max_buffer_chars: _ } => {
                 let interceptor = StreamingInterceptor::new();
                 let (mut token_rx, mut tool_rx) = interceptor.process_stream(token_stream).await;
 

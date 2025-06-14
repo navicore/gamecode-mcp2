@@ -62,7 +62,7 @@ impl StreamingInterceptor {
         stream: S,
     ) -> (mpsc::Receiver<TokenClass>, mpsc::Receiver<ToolCall>) 
     where
-        S: Stream<Item = String> + Send + 'static,
+        S: Stream<Item = String> + Send + 'static + Unpin,
     {
         let (token_tx, token_rx) = mpsc::channel(100);
         let (tool_tx, tool_rx) = mpsc::channel(10);

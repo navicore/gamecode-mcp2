@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 
 /// Detailed event logging for debugging MCP integrations
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpEvent {
     pub timestamp: SystemTime,
     pub event_type: McpEventType,
@@ -12,7 +12,7 @@ pub struct McpEvent {
     pub duration_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum McpEventType {
     // Prompt enhancement
