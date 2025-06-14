@@ -1,5 +1,5 @@
 [workspace]
-members = ["mcp-server", "mcp-client"]
+members = ["mcp-server", "mcp-client", "mcp-host"]
 resolver = "2"
 
 [workspace.package]
