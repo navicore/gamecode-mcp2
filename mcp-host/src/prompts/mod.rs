@@ -24,18 +24,11 @@ pub enum ToolFormat {
 impl PromptTemplate {
     pub fn new(model_name: &str) -> Self {
         let (system_prompt, tool_format) = match model_name {
-            "llama3.1:70b" | "llama3.1:8b" => (
-                Self::llama_system_prompt(),
-                ToolFormat::NativeTools,
-            ),
-            "mistral:7b-instruct" => (
-                Self::mistral_system_prompt(),
-                ToolFormat::JsonOnly,
-            ),
-            _ => (
-                Self::generic_system_prompt(),
-                ToolFormat::JsonOnly,
-            ),
+            "llama3.1:70b" | "llama3.1:8b" => {
+                (Self::llama_system_prompt(), ToolFormat::NativeTools)
+            }
+            "mistral:7b-instruct" => (Self::mistral_system_prompt(), ToolFormat::JsonOnly),
+            _ => (Self::generic_system_prompt(), ToolFormat::JsonOnly),
         };
 
         Self {
@@ -44,9 +37,14 @@ impl PromptTemplate {
         }
     }
 
-    pub fn format_with_tools(&self, tools: &[mcp_client::protocol::Tool], conversation: &[(String, String)], user_message: &str) -> String {
+    pub fn format_with_tools(
+        &self,
+        tools: &[gamecode_mcp_client::protocol::Tool],
+        conversation: &[(String, String)],
+        user_message: &str,
+    ) -> String {
         let mut prompt = self.system_prompt.clone();
-        
+
         // Add tool definitions
         prompt.push_str("\n\nAvailable tools:\n");
         for tool in tools {
@@ -71,7 +69,11 @@ impl PromptTemplate {
 
         // Add current message
         prompt.push_str(&format!("\nUser: {}\nAssistant: ", user_message));
-        
+
+        tracing::debug!("=== FORMATTED PROMPT WITH TOOLS ==>");
+        tracing::debug!("Number of tools: {}", tools.len());
+        tracing::debug!("Final prompt length: {} chars", prompt.len());
+
         prompt
     }
 
@@ -88,23 +90,33 @@ impl PromptTemplate {
 
     fn parse_json_tool_calls(&self, response: &str) -> Result<Vec<ToolCall>> {
         let mut tool_calls = Vec::new();
+
+        // Look for JSON blocks in the response - handles nested braces
+        let json_regex = regex::Regex::new(r#"\{"tool":\s*"[^"]+",\s*"params":\s*\{[^}]+\}\}"#)?;
         
-        // Look for JSON blocks in the response
-        let json_regex = regex::Regex::new(r"\{[^{}]*\"tool\"[^{}]*\}")?;
-        
+        tracing::debug!("Searching for tool calls in response: {}", response);
+
         for capture in json_regex.find_iter(response) {
-            match serde_json::from_str::<ToolCall>(capture.as_str()) {
-                Ok(tool_call) => tool_calls.push(tool_call),
+            let json_str = capture.as_str();
+            tracing::debug!("Found potential tool call JSON: {}", json_str);
+            
+            match serde_json::from_str::<ToolCall>(json_str) {
+                Ok(tool_call) => {
+                    tracing::debug!("Successfully parsed tool call: {:?}", tool_call);
+                    tool_calls.push(tool_call);
+                },
                 Err(e) => {
-                    tracing::debug!("Failed to parse tool call JSON: {}", e);
+                    tracing::debug!("Failed to parse tool call JSON '{}': {}", json_str, e);
                 }
             }
         }
         
+        tracing::debug!("Total tool calls found: {}", tool_calls.len());
+
         Ok(tool_calls)
     }
 
-    fn parse_custom_tool_calls(&self, response: &str, pattern: &str) -> Result<Vec<ToolCall>> {
+    fn parse_custom_tool_calls(&self, _response: &str, _pattern: &str) -> Result<Vec<ToolCall>> {
         // Implement custom parsing based on pattern
         todo!("Custom tool call parsing")
     }
@@ -131,7 +143,10 @@ impl PromptTemplate {
     fn generic_system_prompt() -> String {
         "You are a helpful AI assistant with access to tools. \
         Use the available tools to help answer user questions and complete tasks. \
-        Always validate your tool parameters match the schema before calling.".to_string()
+        Always validate your tool parameters match the schema before calling.\n\n\
+        IMPORTANT: Do NOT include your thinking process in your response. \
+        Only output your final answer or tool calls."
+            .to_string()
     }
 
     fn llama_system_prompt() -> String {
@@ -146,13 +161,61 @@ impl PromptTemplate {
 
     pub fn validate_response(&self, response: &str) -> ValidationResult {
         let tool_calls = self.parse_tool_calls(response).unwrap_or_default();
-        
+
         ValidationResult {
             is_valid: !response.is_empty(),
             has_tool_calls: !tool_calls.is_empty(),
             tool_calls,
             errors: vec![],
         }
+    }
+
+    pub fn format_tool_results_prompt(
+        &self,
+        tools: &[gamecode_mcp_client::protocol::Tool],
+        _original_response: &str,
+        tool_results: &[(String, Value)],
+        user_message: &str,
+    ) -> String {
+        let mut prompt = self.system_prompt.clone();
+        prompt.push_str("\n\n");
+        
+        // Re-add available tools
+        prompt.push_str("Available tools:\n");
+        for tool in tools {
+            prompt.push_str(&format!(
+                "- {}: {}\n  Parameters: {}\n",
+                tool.name,
+                tool.description,
+                serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
+            ));
+        }
+        prompt.push_str("\n");
+        prompt.push_str(&self.tool_usage_instructions());
+        prompt.push_str("\n\n");
+        
+        // Add context about what happened
+        prompt.push_str("Previous tool results:\n\n");
+        
+        // Format tool results nicely
+        for (tool_name, result) in tool_results {
+            prompt.push_str(&format!("Tool: {}\n", tool_name));
+            prompt.push_str(&format!("Result: {}\n\n", 
+                serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
+            ));
+        }
+        
+        // Add the original user question for context
+        prompt.push_str(&format!("Original user question: {}\n\n", user_message));
+        
+        // Make it clear they should provide an answer or use different tools
+        prompt.push_str("Based on the tool results above, continue working on the user's request.\n");
+        prompt.push_str("IMPORTANT: Do NOT repeat the same tool calls that were just executed.\n");
+        prompt.push_str("If you need different information, use different tools or different parameters.\n");
+        prompt.push_str("If you have all the information needed, provide your final answer to the user.\n\n");
+        prompt.push_str("Assistant: ");
+        
+        prompt
     }
 }
 

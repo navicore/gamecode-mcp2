@@ -1,0 +1,37 @@
+tools:
+  - name: list_files
+    description: List files in a directory
+    command: /bin/ls
+    args:
+      - name: path
+        description: The directory path to list files from
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  - name: check_file_exists
+    description: Check if a file exists at the given path
+    command: /bin/sh
+    static_flags:
+      - "-c"
+      - "if [ -e \"$1\" ]; then echo 'File exists'; else echo 'File does not exist'; fi"
+      - "--"
+    args:
+      - name: path
+        description: The file path to check
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true
+
+  - name: read_file
+    description: Read the contents of a file
+    command: /bin/cat
+    args:
+      - name: path
+        description: The file path to read
+        required: true
+        type: string
+        cli_flag: null
+        is_path: true

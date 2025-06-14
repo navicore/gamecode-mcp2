@@ -25,19 +25,15 @@ impl RetryStrategy {
         Fut: Future<Output = Result<T>>,
     {
         let mut last_error = None;
-        
+
         for attempt in 0..=self.max_retries {
             match operation(attempt).await {
                 Ok(result) => return Ok(result),
                 Err(e) => {
-                    tracing::warn!(
-                        "Attempt {} failed: {}. Retrying...", 
-                        attempt + 1, 
-                        e
-                    );
-                    
+                    tracing::warn!("Attempt {} failed: {}. Retrying...", attempt + 1, e);
+
                     last_error = Some(e);
-                    
+
                     if attempt < self.max_retries {
                         let delay = self.calculate_delay(attempt);
                         sleep(Duration::from_millis(delay)).await;
@@ -45,7 +41,7 @@ impl RetryStrategy {
                 }
             }
         }
-        
+
         Err(last_error.unwrap_or_else(|| anyhow::anyhow!("All retry attempts failed")))
     }
 
@@ -90,16 +86,16 @@ impl RetryContext {
 
         let mut prompt = original_prompt.to_string();
         prompt.push_str("\n\nIMPORTANT: Previous attempts failed with these errors:\n");
-        
+
         for (i, error) in self.previous_errors.iter().enumerate() {
             prompt.push_str(&format!("Attempt {}: {}\n", i + 1, error));
         }
-        
+
         prompt.push_str("\nPlease correct these issues in your response. Ensure:\n");
         prompt.push_str("1. Tool calls use valid JSON format\n");
         prompt.push_str("2. Parameter names match the schema exactly\n");
         prompt.push_str("3. Required parameters are not missing\n");
-        
+
         prompt
     }
 }

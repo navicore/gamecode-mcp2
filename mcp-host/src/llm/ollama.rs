@@ -15,12 +15,18 @@ pub struct OllamaProvider {
 
 impl OllamaProvider {
     pub fn new(model: String) -> Self {
-        Self::with_config(model, "http://localhost:11434", Duration::from_secs(120))
+        Self::with_config(model, "http://localhost:11434", Duration::from_secs(60))
     }
 
     pub fn with_config(model: String, base_url: &str, timeout: Duration) -> Self {
+        let client = Client::builder()
+            .pool_max_idle_per_host(1)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .build()
+            .expect("Failed to create HTTP client");
+            
         Self {
-            client: Client::new(),
+            client,
             base_url: base_url.to_string(),
             model,
             timeout,
@@ -60,11 +66,12 @@ impl LlmProvider for OllamaProvider {
             prompt: request.prompt,
             temperature: request.temperature,
             stream: false,
-            num_predict: request.max_tokens,
+            num_predict: request.max_tokens.filter(|&t| t > 0).or(Some(100)), // Default to 100 if not set
             stop: request.stop_sequences,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/generate", self.base_url))
             .json(&ollama_request)
             .timeout(self.timeout)
@@ -81,14 +88,15 @@ impl LlmProvider for OllamaProvider {
         Ok(LlmResponse {
             text: ollama_response.response,
             finish_reason: ollama_response.done_reason,
-            usage: match (ollama_response.prompt_eval_count, ollama_response.eval_count) {
-                (Some(prompt_tokens), Some(completion_tokens)) => {
-                    Some(TokenUsage {
-                        prompt_tokens,
-                        completion_tokens,
-                        total_tokens: prompt_tokens + completion_tokens,
-                    })
-                }
+            usage: match (
+                ollama_response.prompt_eval_count,
+                ollama_response.eval_count,
+            ) {
+                (Some(prompt_tokens), Some(completion_tokens)) => Some(TokenUsage {
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens: prompt_tokens + completion_tokens,
+                }),
                 _ => None,
             },
         })
@@ -100,9 +108,13 @@ impl LlmProvider for OllamaProvider {
 
     fn supports_tools(&self) -> bool {
         // Some Ollama models like llama3.1 support tools natively
-        matches!(self.model.as_str(), 
-            "llama3.1:70b" | "llama3.1:8b" | "llama3.1:latest" |
-            "mistral:7b-instruct" | "qwen2.5-coder"
+        matches!(
+            self.model.as_str(),
+            "llama3.1:70b"
+                | "llama3.1:8b"
+                | "llama3.1:latest"
+                | "mistral:7b-instruct"
+                | "qwen2.5-coder"
         )
     }
 }

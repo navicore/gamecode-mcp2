@@ -1,5 +1,5 @@
 [package]
-name = "mcp-host"
+name = "gamecode-mcp-host"
 version = "0.1.0"
 edition = "2021"
 
@@ -33,7 +33,7 @@ regex = "1.11"
 rand = "0.8"
 
 # MCP client dependency (internal)
-mcp-client = { path = "../mcp-client" }
+gamecode-mcp-client = { path = "../mcp-client" }
 
 [dev-dependencies]
 mockito = "1.6"

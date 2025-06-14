@@ -31,9 +31,9 @@ pub struct TokenUsage {
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn generate(&self, request: LlmRequest) -> Result<LlmResponse>;
-    
+
     fn name(&self) -> &str;
-    
+
     fn supports_tools(&self) -> bool {
         false
     }

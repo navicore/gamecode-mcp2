@@ -1,5 +1,5 @@
 [package]
-name = "gamecode-mcp2"
+name = "gamecode-mcp-server"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -12,6 +12,26 @@ repository.workspace = true
 [[bin]]
 name = "gamecode-mcp2"
 path = "src/main.rs"
+
+[[example]]
+name = "mcp_host_basic"
+path = "../examples/mcp_host_basic.rs"
+
+[[example]]
+name = "mcp_host_advanced"
+path = "../examples/mcp_host_advanced.rs"
+
+[[example]]
+name = "mcp_host_simple_test"
+path = "../examples/mcp_host_simple_test.rs"
+
+[[example]]
+name = "mcp_host_debug_test"
+path = "../examples/mcp_host_debug_test.rs"
+
+[[example]]
+name = "test_multi_tool"
+path = "../examples/test_multi_tool.rs"
 
 [dependencies]
 serde.workspace = true
@@ -27,3 +47,5 @@ tokio-util = { version = "0.7", features = ["codec"] }
 
 [dev-dependencies]
 tempfile = "3.8"
+gamecode-mcp-host = { path = "../mcp-host" }
+gamecode-mcp-client = { path = "../mcp-client" }
