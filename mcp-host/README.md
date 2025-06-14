@@ -6,6 +6,13 @@ A streaming-aware integration layer for adding Model Context Protocol (MCP) tool
 
 `mcp-host` enables chat applications to seamlessly integrate MCP tools while maintaining full control over their LLM interactions. It provides intelligent streaming interception to identify and execute tool calls without disrupting the user experience.
 
+The architecture consists of three layers:
+1. **mcp-host**: Streaming interceptor and integration layer
+2. **mcp-client**: Manages the MCP server process lifecycle and JSON-RPC communication
+3. **MCP Server**: The actual tool server (e.g., gamecode-mcp2) running as a subprocess
+
+When initialized, mcp-client spawns the MCP server as a subprocess and communicates with it via stdio using JSON-RPC 2.0. This keeps tool execution isolated and secure.
+
 ## Key Features
 
 - **Streaming-aware**: Process tokens in real-time without blocking
@@ -23,26 +30,35 @@ graph TB
         USER[User Input]
         UI[UI Display]
         CHAT[Chat Logic]
+        LLM[LLM Provider<br/>e.g. Ollama]
     end
     
     subgraph "mcp-host"
         MCP[McpChatIntegration]
         SI[StreamingInterceptor]
-        
-        SI --> |Narrative| UI
-        SI --> |Tool Calls| MCP
+        CLIENT[mcp-client]
     end
     
-    subgraph "External"
-        LLM[LLM Provider]
-        TOOLS[MCP Tools]
+    subgraph "MCP Server Process"
+        SERVER[MCP Server<br/>gamecode-mcp2]
+        TOOLS[Tool Implementations<br/>defined in tools.yaml]
+        
+        SERVER --> TOOLS
     end
     
     USER --> CHAT
     CHAT --> LLM
     LLM --> |Token Stream| SI
-    MCP --> TOOLS
-    TOOLS --> |Results| CHAT
+    SI --> |Narrative| UI
+    SI --> |Tool Calls| MCP
+    MCP --> CLIENT
+    CLIENT --> |stdio/JSON-RPC| SERVER
+    SERVER --> |Results| CLIENT
+    CLIENT --> |Tool Results| MCP
+    MCP --> |Enhanced Response| CHAT
+    
+    style SERVER fill:#f9f,stroke:#333,stroke-width:2px
+    style CLIENT fill:#9ff,stroke:#333,stroke-width:2px
 ```
 
 ## Quick Start

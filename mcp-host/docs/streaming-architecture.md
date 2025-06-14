@@ -94,15 +94,18 @@ sequenceDiagram
     participant MCP as McpChatIntegration
     participant SI as StreamingInterceptor
     participant MC as MCP Client
-    participant Tool as Tool Process
+    participant MS as MCP Server Process
     
     User->>ChatApp: Send message
     ChatApp->>ChatApp: Add to conversation
     
+    Note over MC,MS: MCP Client launches server process on connect
     ChatApp->>MCP: enhance_system_prompt()
     MCP->>MC: list_tools()
+    MC->>MS: tools/list via stdio
+    MS-->>MC: Tool schemas
     MC-->>MCP: Available tools
-    MCP-->>ChatApp: Enhanced prompt
+    MCP-->>ChatApp: Enhanced prompt with tools
     
     ChatApp->>LLM: Request streaming response
     LLM-->>ChatApp: Token stream
@@ -127,14 +130,17 @@ sequenceDiagram
     and Tool Execution
         loop Each tool detected
             SI->>MC: call_tool(name, params)
-            MC->>Tool: Execute tool
-            Tool-->>MC: Result
+            MC->>MS: tools/call via stdio JSON-RPC
+            MS->>MS: Execute tool locally
+            MS-->>MC: Tool result
             MC-->>SI: Tool result
             SI-->>ChatApp: ExecutedTool
             ChatApp->>User: Show indicator (optional)
         end
     end
     deactivate SI
+    
+    Note over MC,MS: Server process continues running for future requests
 ```
 
 ## Token Classification Examples
