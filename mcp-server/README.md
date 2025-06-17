@@ -1,6 +1,6 @@
 # gamecode-mcp2
 
-A minimal, auditable Model Context Protocol (MCP) server for safe LLM-to-system interaction.
+A minimal, auditable Model Context Protocol (MCP) server for LLM-to-system interaction.
 
 ## Overview
 
