@@ -1,5 +1,6 @@
 use gamecode_mcp2::tools::ToolManager;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -13,7 +14,7 @@ async fn test_execute_echo_command() {
         "message": "Hello, World!"
     });
 
-    let result = tool_manager.execute_tool("echo_test", args).await;
+    let result = tool_manager.execute_tool("echo_test", args, &HashMap::new()).await;
     assert!(result.is_ok(), "Echo command failed: {:?}", result);
 
     let output = result.unwrap();
@@ -31,7 +32,7 @@ async fn test_execute_internal_math() {
         "b": 3.0
     });
 
-    let result = tool_manager.execute_tool("math_add", args).await;
+    let result = tool_manager.execute_tool("math_add", args, &HashMap::new()).await;
     assert!(result.is_ok(), "Math addition failed: {:?}", result);
 
     let output = result.unwrap();
@@ -54,7 +55,7 @@ async fn test_execute_file_operations() {
         "content": "Test content"
     });
 
-    let write_result = tool_manager.execute_tool("file_writer", write_args).await;
+    let write_result = tool_manager.execute_tool("file_writer", write_args, &HashMap::new()).await;
     assert!(
         write_result.is_ok(),
         "File write failed: {:?}",
@@ -70,7 +71,7 @@ async fn test_execute_file_operations() {
         "path": temp_dir.path().to_str().unwrap()
     });
 
-    let list_result = tool_manager.execute_tool("list_dir", list_args).await;
+    let list_result = tool_manager.execute_tool("list_dir", list_args, &HashMap::new()).await;
     assert!(
         list_result.is_ok(),
         "Directory listing failed: {:?}",
@@ -90,7 +91,7 @@ async fn test_execute_nonexistent_tool() {
     tool_manager.load_from_file(&path).await.unwrap();
 
     let args = json!({});
-    let result = tool_manager.execute_tool("does_not_exist", args).await;
+    let result = tool_manager.execute_tool("does_not_exist", args, &HashMap::new()).await;
 
     assert!(result.is_err(), "Should fail for nonexistent tool");
     assert!(result.unwrap_err().to_string().contains("not found"));
@@ -107,7 +108,7 @@ async fn test_execute_missing_required_args() {
 
     // The current implementation might not validate required args
     // This test documents the current behavior
-    let result = tool_manager.execute_tool("echo_test", args).await;
+    let result = tool_manager.execute_tool("echo_test", args, &HashMap::new()).await;
 
     // If validation is added later, this test should be updated
     // For now, it likely succeeds but with empty output
@@ -129,7 +130,7 @@ async fn test_command_injection_prevention() {
         "message": "test; rm -rf /tmp/test"
     });
 
-    let result = tool_manager.execute_tool("echo_test", args).await;
+    let result = tool_manager.execute_tool("echo_test", args, &HashMap::new()).await;
     assert!(result.is_ok(), "Command should execute safely");
 
     let output = result.unwrap();

@@ -92,6 +92,21 @@ The server looks for tools in this order:
 4. Auto-detection based on project type
 5. Config directory: `~/.config/gamecode-mcp/tools.yaml`
 
+## Server-Side Value Injection
+
+For scenarios where you need to provide values that the LLM should not control (e.g., multi-tenant environments), use the `--inject` flag:
+
+```bash
+gamecode-mcp2 --inject tenant=customer123 --inject environment=production
+```
+
+Injected values are:
+- Set as environment variables with `GAMECODE_` prefix (e.g., `GAMECODE_TENANT`)
+- Available to all executed tools but not visible to the LLM
+- Useful for enforcing security boundaries in multi-tenant deployments
+
+**Important**: This provides a separation of concerns but is not a complete security solution. Always validate tool inputs and follow defense-in-depth principles.
+
 ## Examples
 
 See the `examples/` directory for tool configurations for various use cases:
@@ -99,6 +114,7 @@ See the `examples/` directory for tool configurations for various use cases:
 - `development/`: Language-specific development tools
 - `security/`: Security-focused configurations
 - `data/`: Data processing tools
+- `multi-tenant-example.yaml`: Using injected values for tenant isolation
 
 ## Security Considerations
 

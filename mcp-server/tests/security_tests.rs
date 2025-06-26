@@ -1,5 +1,6 @@
 use gamecode_mcp2::tools::ToolManager;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -25,7 +26,7 @@ async fn test_path_traversal_prevention() {
         });
 
         // Current implementation doesn't prevent this - documenting the risk
-        let result = tool_manager.execute_tool("file_writer", args).await;
+        let result = tool_manager.execute_tool("file_writer", args, &HashMap::new()).await;
 
         // This test documents that path traversal IS possible
         // In a secure implementation, these should all fail
@@ -55,7 +56,7 @@ async fn test_command_argument_injection() {
             "message": attempt
         });
 
-        let result = tool_manager.execute_tool("echo_test", args).await;
+        let result = tool_manager.execute_tool("echo_test", args, &HashMap::new()).await;
         assert!(result.is_ok(), "Command should execute");
 
         let output = result.unwrap();
@@ -175,7 +176,7 @@ async fn test_symlink_traversal() {
             "content": "new content"
         });
 
-        let result = tool_manager.execute_tool("file_writer", args).await;
+        let result = tool_manager.execute_tool("file_writer", args, &HashMap::new()).await;
 
         // Current implementation follows symlinks - documenting the risk
         if result.is_ok() {

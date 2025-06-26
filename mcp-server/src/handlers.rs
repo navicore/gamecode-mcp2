@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use serde_json::Value;
+use std::collections::HashMap;
 use tracing::{debug, error, info};
 
 use crate::protocol::*;
@@ -10,11 +11,12 @@ use crate::tools::ToolManager;
 
 pub struct RequestHandler {
     tool_manager: ToolManager,
+    injected_values: HashMap<String, String>,
 }
 
 impl RequestHandler {
-    pub fn new(tool_manager: ToolManager) -> Self {
-        Self { tool_manager }
+    pub fn new(tool_manager: ToolManager, injected_values: HashMap<String, String>) -> Self {
+        Self { tool_manager, injected_values }
     }
 
     // Request dispatch - only these three methods exist, nothing else
@@ -126,7 +128,7 @@ impl RequestHandler {
         // Execute only configured tools with validated parameters
         match self
             .tool_manager
-            .execute_tool(&params.name, params.arguments)
+            .execute_tool(&params.name, params.arguments, &self.injected_values)
             .await
         {
             Ok(result) => {

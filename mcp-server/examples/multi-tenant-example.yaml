@@ -1,0 +1,33 @@
+tools:
+  # Example tool that would use injected tenant/environment values
+  - name: query_tenant_data
+    description: Query data for the current tenant
+    command: ./scripts/query-tenant.sh
+    args:
+      - name: query
+        description: SQL query to execute
+        required: true
+        type: string
+        cli_flag: --query
+    # The script would access GAMECODE_TENANT and GAMECODE_ENVIRONMENT
+    # environment variables that are automatically set from --inject
+
+  - name: deploy_to_environment
+    description: Deploy application to current environment
+    command: ./scripts/deploy.sh
+    args:
+      - name: version
+        description: Version to deploy
+        required: true
+        type: string
+        cli_flag: --version
+    # The script would access GAMECODE_ENVIRONMENT to know where to deploy
+
+# Usage:
+# gamecode-mcp2 --inject tenant=customer123 --inject environment=staging --tools-file multi-tenant-example.yaml
+#
+# The tools will have access to:
+# - GAMECODE_TENANT=customer123
+# - GAMECODE_ENVIRONMENT=staging
+#
+# This ensures the LLM cannot override these security-critical values
