@@ -94,16 +94,50 @@ The server looks for tools in this order:
 
 ## Server-Side Value Injection
 
-For scenarios where you need to provide values that the LLM should not control (e.g., multi-tenant environments), use the `--inject` flag:
+The `--inject` flag allows you to pass server-side values that are invisible to the LLM but available to your tools. This is essential for multi-tenant scenarios where the LLM must not control security-critical parameters.
+
+### How it works
 
 ```bash
 gamecode-mcp2 --inject tenant=customer123 --inject environment=production
 ```
 
-Injected values are:
-- Set as environment variables with `GAMECODE_` prefix (e.g., `GAMECODE_TENANT`)
-- Available to all executed tools but not visible to the LLM
-- Useful for enforcing security boundaries in multi-tenant deployments
+When tools execute, they receive these as environment variables:
+- `tenant=customer123` → `GAMECODE_TENANT=customer123`
+- `environment=production` → `GAMECODE_ENVIRONMENT=production`
+
+### Security model
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────┐
+│ Orchestrator│ --> │ gamecode-mcp2│ --> │ Tool Execution  │ --> │ Tool │
+│   (knows    │     │  (--inject)  │     │ (env vars set) │     │      │
+│   tenant)   │     │              │     │                 │     │      │
+└─────────────┘     └──────────────┘     └─────────────────┘     └──────┘
+                           ↑
+                           │ MCP Protocol (no tenant info)
+                           │
+                    ┌──────────────┐
+                    │     LLM      │
+                    │ (cannot see  │
+                    │  or modify   │
+                    │   tenant)    │
+                    └──────────────┘
+```
+
+### Example: Multi-tenant SaaS
+
+```bash
+# Your orchestrator spawns a new MCP server per request
+gamecode-mcp2 --inject tenant=$CUSTOMER_ID --inject env=$ENVIRONMENT
+
+# Your tool script accesses the values
+#!/bin/bash
+# query-data.sh
+psql -h $GAMECODE_ENV.db.example.com \
+     -d tenant_$GAMECODE_TENANT \
+     -c "$1"
+```
 
 **Important**: This provides a separation of concerns but is not a complete security solution. Always validate tool inputs and follow defense-in-depth principles.
 
