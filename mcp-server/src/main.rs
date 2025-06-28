@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use serde_json::Value;
+use std::collections::HashMap;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, error, info, warn};
 
@@ -20,6 +21,7 @@ async fn main() -> Result<()> {
     // Handle command-line arguments
     let args: Vec<String> = std::env::args().collect();
     let mut tools_file_override: Option<String> = None;
+    let mut injected_values: HashMap<String, String> = HashMap::new();
     
     let mut i = 1;
     while i < args.len() {
@@ -38,6 +40,21 @@ async fn main() -> Result<()> {
                     i += 2;
                 } else {
                     eprintln!("Error: --tools-file requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            "--inject" | "-i" => {
+                if i + 1 < args.len() {
+                    let inject_arg = &args[i + 1];
+                    if let Some((key, value)) = inject_arg.split_once('=') {
+                        injected_values.insert(key.to_string(), value.to_string());
+                        i += 2;
+                    } else {
+                        eprintln!("Error: --inject requires KEY=VALUE format");
+                        std::process::exit(1);
+                    }
+                } else {
+                    eprintln!("Error: --inject requires an argument");
                     std::process::exit(1);
                 }
             }
@@ -69,7 +86,7 @@ async fn main() -> Result<()> {
         warn!("The server will start but no tools will be available.");
     }
 
-    let handler = RequestHandler::new(tool_manager);
+    let handler = RequestHandler::new(tool_manager, injected_values);
 
     // Stdio is our only transport - no network, no files
     let stdin = tokio::io::stdin();
@@ -181,6 +198,7 @@ fn print_help() {
     println!("    -h, --help               Print help information");
     println!("    -V, --version            Print version information");
     println!("    -t, --tools-file <FILE>  Specify tools configuration file");
+    println!("    -i, --inject KEY=VALUE   Inject server-side values (can be used multiple times)");
     println!();
     println!("DESCRIPTION:");
     println!("    An MCP server that communicates via stdio (stdin/stdout).");
@@ -203,6 +221,9 @@ fn print_help() {
     println!();
     println!("    # Run in Python development mode");
     println!("    GAMECODE_MODE=python-dev gamecode-mcp2");
+    println!();
+    println!("    # Run with injected values for multi-tenant scenarios");
+    println!("    gamecode-mcp2 --inject tenant=customer123 --inject environment=production");
     println!();
     println!("MORE INFO:");
     println!("    Repository: {}", env!("CARGO_PKG_REPOSITORY"));

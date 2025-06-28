@@ -1,5 +1,6 @@
 use gamecode_mcp2::tools::ToolManager;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[tokio::test]
@@ -13,7 +14,7 @@ async fn test_path_validation_rejection() {
         "file": "../../../etc/passwd"
     });
 
-    let result = tool_manager.execute_tool("safe_file_reader", args).await;
+    let result = tool_manager.execute_tool("safe_file_reader", args, &HashMap::new()).await;
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -32,7 +33,7 @@ async fn test_absolute_path_rejection() {
         "file": "/etc/passwd"
     });
 
-    let result = tool_manager.execute_tool("safe_file_reader", args).await;
+    let result = tool_manager.execute_tool("safe_file_reader", args, &HashMap::new()).await;
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -51,7 +52,7 @@ async fn test_validation_allows_safe_paths() {
         "file": "README.md"
     });
 
-    let result = tool_manager.execute_tool("safe_file_reader", args).await;
+    let result = tool_manager.execute_tool("safe_file_reader", args, &HashMap::new()).await;
     // This might fail if README.md doesn't exist, but shouldn't fail validation
     if result.is_err() {
         let err = result.unwrap_err().to_string();
@@ -71,7 +72,7 @@ async fn test_unrestricted_tool_works() {
         "message": "../../../etc/passwd; cat /etc/shadow"
     });
 
-    let result = tool_manager.execute_tool("unrestricted_echo", args).await;
+    let result = tool_manager.execute_tool("unrestricted_echo", args, &HashMap::new()).await;
     assert!(result.is_ok());
 
     // But the content should be literal (no execution)
@@ -93,7 +94,7 @@ async fn test_null_byte_rejection() {
         "file": "file.txt\0.bypass"
     });
 
-    let result = tool_manager.execute_tool("safe_file_reader", args).await;
+    let result = tool_manager.execute_tool("safe_file_reader", args, &HashMap::new()).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("null byte"));
 }

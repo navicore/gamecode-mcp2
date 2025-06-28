@@ -63,21 +63,14 @@ pub struct ArgDefinition {
     pub is_path: bool,  // Mark arguments that are file paths
 }
 
+#[derive(Default)]
 pub struct ToolManager {
     tools: HashMap<String, ToolDefinition>,
 }
 
 impl ToolManager {
     pub fn new() -> Self {
-        Self {
-            tools: HashMap::new(),
-        }
-    }
-    
-    #[cfg(test)]
-    pub fn new_for_testing() -> Self {
-        // For tests, just create empty manager that tests can load explicitly
-        Self::new()
+        Self::default()
     }
 
     // Explicit tool loading - admin controls what tools are available
@@ -143,61 +136,6 @@ impl ToolManager {
         Ok(include_path)
     }
 
-    pub async fn load_from_default_locations(&mut self) -> Result<()> {
-        // Check for tools.yaml in various locations
-        let paths = vec![
-            PathBuf::from("./tools.yaml"),
-            PathBuf::from("~/.config/gamecode-mcp/tools.yaml"),
-        ];
-
-        if let Ok(tools_file) = std::env::var("GAMECODE_TOOLS_FILE") {
-            return self.load_from_file(Path::new(&tools_file)).await;
-        }
-
-        for path in paths {
-            let expanded = if path.starts_with("~") {
-                if let Some(home) = directories::UserDirs::new() {
-                    home.home_dir().join(path.strip_prefix("~").unwrap())
-                } else {
-                    continue;
-                }
-            } else {
-                path
-            };
-
-            if expanded.exists() {
-                return self.load_from_file(&expanded).await;
-            }
-        }
-
-        Err(anyhow::anyhow!("No tools.yaml file found"))
-    }
-
-    pub async fn load_mode(&mut self, mode: &str) -> Result<()> {
-        // Clear existing tools when switching modes
-        self.tools.clear();
-
-        // Load the mode-specific configuration
-        let mode_file = format!("tools/profiles/{}.yaml", mode);
-        let mode_path = PathBuf::from(&mode_file);
-
-        if mode_path.exists() {
-            self.load_from_file(&mode_path).await
-        } else {
-            // Try in config directory
-            if let Some(home) = directories::UserDirs::new() {
-                let config_path = home
-                    .home_dir()
-                    .join(".config/gamecode-mcp")
-                    .join(&mode_file);
-                if config_path.exists() {
-                    return self.load_from_file(&config_path).await;
-                }
-            }
-
-            Err(anyhow::anyhow!("Mode configuration '{}' not found", mode))
-        }
-    }
 
     pub async fn load_with_precedence(&mut self, cli_override: Option<String>) -> Result<()> {
         // Clear precedence order:
@@ -223,7 +161,7 @@ impl ToolManager {
         // 4. Auto-detection (only if no local tools.yaml)
         if let Ok(mode) = self.detect_project_type() {
             info!("Auto-detected {} project", mode);
-            if let Ok(_) = self.load_auto_detected_tools(&mode).await {
+            if self.load_auto_detected_tools(&mode).await.is_ok() {
                 return Ok(());
             }
         }
@@ -337,7 +275,7 @@ impl ToolManager {
     }
 
     // Tool execution - the critical security boundary
-    pub async fn execute_tool(&self, name: &str, args: Value) -> Result<Value> {
+    pub async fn execute_tool(&self, name: &str, args: Value, injected_values: &HashMap<String, String>) -> Result<Value> {
         let tool = self
             .tools
             .get(name)
@@ -345,7 +283,7 @@ impl ToolManager {
 
         // Internal handlers are hardcoded - no dynamic code execution
         if let Some(handler) = &tool.internal_handler {
-            return self.execute_internal_handler(handler, &args).await;
+            return self.execute_internal_handler(handler, &args, injected_values).await;
         }
 
         // External commands - only what's explicitly configured
@@ -354,6 +292,11 @@ impl ToolManager {
         }
 
         let mut cmd = Command::new(&tool.command);
+        
+        // Set injected values as environment variables for the command
+        for (key, value) in injected_values {
+            cmd.env(format!("GAMECODE_{}", key.to_uppercase()), value);
+        }
 
         // Add static flags
         for flag in &tool.static_flags {
@@ -417,7 +360,7 @@ impl ToolManager {
     }
 
     // Internal handlers - hardcoded, no dynamic evaluation
-    async fn execute_internal_handler(&self, handler: &str, args: &Value) -> Result<Value> {
+    async fn execute_internal_handler(&self, handler: &str, args: &Value, _injected_values: &HashMap<String, String>) -> Result<Value> {
         match handler {
             "add" => {
                 let a = args

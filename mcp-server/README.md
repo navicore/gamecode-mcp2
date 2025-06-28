@@ -92,6 +92,55 @@ The server looks for tools in this order:
 4. Auto-detection based on project type
 5. Config directory: `~/.config/gamecode-mcp/tools.yaml`
 
+## Server-Side Value Injection
+
+The `--inject` flag allows you to pass server-side values that are invisible to the LLM but available to your tools. This is essential for multi-tenant scenarios where the LLM must not control security-critical parameters.
+
+### How it works
+
+```bash
+gamecode-mcp2 --inject tenant=customer123 --inject environment=production
+```
+
+When tools execute, they receive these as environment variables:
+- `tenant=customer123` → `GAMECODE_TENANT=customer123`
+- `environment=production` → `GAMECODE_ENVIRONMENT=production`
+
+### Security model
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────┐
+│ Orchestrator│ --> │ gamecode-mcp2│ --> │ Tool Execution  │ --> │ Tool │
+│   (knows    │     │  (--inject)  │     │ (env vars set) │     │      │
+│   tenant)   │     │              │     │                 │     │      │
+└─────────────┘     └──────────────┘     └─────────────────┘     └──────┘
+                           ↑
+                           │ MCP Protocol (no tenant info)
+                           │
+                    ┌──────────────┐
+                    │     LLM      │
+                    │ (cannot see  │
+                    │  or modify   │
+                    │   tenant)    │
+                    └──────────────┘
+```
+
+### Example: Multi-tenant SaaS
+
+```bash
+# Your orchestrator spawns a new MCP server per request
+gamecode-mcp2 --inject tenant=$CUSTOMER_ID --inject env=$ENVIRONMENT
+
+# Your tool script accesses the values
+#!/bin/bash
+# query-data.sh
+psql -h $GAMECODE_ENV.db.example.com \
+     -d tenant_$GAMECODE_TENANT \
+     -c "$1"
+```
+
+**Important**: This provides a separation of concerns but is not a complete security solution. Always validate tool inputs and follow defense-in-depth principles.
+
 ## Examples
 
 See the `examples/` directory for tool configurations for various use cases:
@@ -99,6 +148,7 @@ See the `examples/` directory for tool configurations for various use cases:
 - `development/`: Language-specific development tools
 - `security/`: Security-focused configurations
 - `data/`: Data processing tools
+- `multi-tenant-example.yaml`: Using injected values for tenant isolation
 
 ## Security Considerations
 

@@ -2,13 +2,14 @@ use gamecode_mcp2::handlers::RequestHandler;
 use gamecode_mcp2::protocol::*;
 use gamecode_mcp2::tools::ToolManager;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 async fn setup_handler() -> RequestHandler {
     let mut tool_manager = ToolManager::new();
     let path = PathBuf::from("tests/fixtures/test_tools.yaml");
     tool_manager.load_from_file(&path).await.unwrap();
-    RequestHandler::new(tool_manager)
+    RequestHandler::new(tool_manager, HashMap::new())
 }
 
 #[tokio::test]
